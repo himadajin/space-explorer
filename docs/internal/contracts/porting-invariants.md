@@ -1,8 +1,12 @@
 # 移植契約 — Vite + React + TypeScript 版が破ってはならないもの
 
-本書は、artifact 版(`reference/space-explorer.html`)から本リポジトリへの移植において、
+本書は、artifact 版(単一 HTML)から本リポジトリへの移植において、
 いかなるリファクタリングでも破ってはならない契約を列挙する。詳細な定義はすべて
 `docs/internal/specs/` を正とし、本書は参照とゲート条件のみを持つ。
+
+註: 移植期間中は原本を `reference/space-explorer.html` として保持し、新旧 CORE の
+ビット一致を機械照合した。移植完了(2026-07-05)をもって原本と照合テストは削除済み。
+以後の恒久ゲートは §2 の既知の正解値(tests/core.test.ts)である。
 
 ## 1. CORE のビット互換 [不変]
 

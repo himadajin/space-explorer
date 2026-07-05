@@ -1,0 +1,112 @@
+/* artifact 版の <style> ブロックの移設(ID・クラス維持) */
+:root{
+  --void:#04060b;
+  --ink:rgba(205,220,240,0.88);
+  --dim:rgba(145,165,195,0.48);
+  --faint:rgba(145,165,195,0.26);
+  --line:rgba(160,185,215,0.16);
+  --panel:rgba(8,12,20,0.86);
+  --ok:#93d9ad;
+  --bad:#e09090;
+  --mono:ui-monospace,"SF Mono","Cascadia Mono","Roboto Mono",Menlo,monospace;
+  --sans:system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;overflow:hidden;background:var(--void);color:var(--ink);
+  font-family:var(--sans);user-select:none;-webkit-user-select:none;touch-action:none}
+#scene{position:fixed;inset:0}
+canvas{display:block}
+
+.label{font-size:9px;letter-spacing:0.22em;color:var(--dim);text-transform:uppercase}
+.mono{font-family:var(--mono)}
+
+/* top-left readout */
+#readout{position:fixed;top:calc(env(safe-area-inset-top,0px) + 14px);left:16px;
+  display:flex;flex-direction:column;gap:8px;pointer-events:none}
+#readout .row{display:flex;align-items:baseline;gap:8px}
+#readout .val{font-family:var(--mono);font-size:11px;color:var(--ink)}
+#metaRow{display:flex;align-items:baseline;gap:8px;min-width:0}
+#metaRow .val{font-family:var(--mono);font-size:10px;color:var(--dim)}
+.spacer{flex:1}
+#verifyMsg{font-family:var(--mono);font-size:10px;letter-spacing:0.05em;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.btn.mini{padding:5px 10px;font-size:9px}
+.btn.sym.mini{padding:3px 8px;font-size:11px}
+#stillNote{font-size:10px;color:var(--dim);letter-spacing:0.05em}
+#veilMsg{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  font-size:9px;letter-spacing:0.3em;color:var(--faint);text-transform:uppercase}
+@keyframes panelIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+@keyframes dotIn{from{transform:scale(0);opacity:0}to{transform:scale(1);opacity:1}}
+
+/* top-right notebook trigger: column of marks */
+#nbTrigger{position:fixed;top:calc(env(safe-area-inset-top,0px) + 14px);right:16px;
+  display:flex;flex-direction:column;align-items:flex-end;gap:7px;cursor:pointer;
+  padding:2px 2px 10px 14px}
+#nbDots{display:flex;flex-direction:column;gap:7px;align-items:flex-end}
+.nbDot{width:5px;height:5px;border-radius:50%;box-shadow:0 0 6px currentColor;animation:dotIn .25s ease-out}
+#nbCount{font-family:var(--mono);font-size:10px;color:var(--dim);letter-spacing:0.1em}
+
+/* bottom HUD */
+#hud{position:fixed;left:0;right:0;bottom:0;display:flex;flex-direction:column;gap:10px;
+  padding:14px 16px calc(env(safe-area-inset-bottom,0px) + 16px);
+  background:linear-gradient(to top,rgba(4,6,11,0.85),rgba(4,6,11,0))}
+#addrLine{display:flex;align-items:center;gap:10px;cursor:pointer;min-width:0}
+#addrText{font-family:var(--mono);font-size:11px;color:var(--ink);letter-spacing:0.02em;
+  white-space:nowrap;overflow-x:auto;scrollbar-width:none;flex:1;min-width:0;
+  border-bottom:1px solid var(--line);padding-bottom:5px;touch-action:pan-x}
+#addrText::-webkit-scrollbar{display:none}
+#fpText{font-family:var(--mono);font-size:10px;color:var(--dim)}
+#btnRow{display:flex;gap:8px;flex-wrap:wrap}
+.btn{appearance:none;background:transparent;border:1px solid var(--line);color:var(--dim);
+  font-family:var(--sans);font-size:9px;letter-spacing:0.2em;text-transform:uppercase;
+  padding:9px 14px;border-radius:2px;cursor:pointer;transition:color .2s,border-color .2s}
+.btn:hover,.btn:focus-visible{color:var(--ink);border-color:var(--dim);outline:none}
+.btn:focus-visible{box-shadow:0 0 0 1px var(--dim)}
+.btn[disabled]{opacity:0.3;pointer-events:none}
+.btn.active{color:var(--ink);border-color:var(--dim)}
+.btn.sym{font-size:13px;letter-spacing:0;padding:7px 15px;line-height:1}
+
+/* panels */
+.panel{position:fixed;left:50%;transform:translateX(-50%);
+  bottom:calc(env(safe-area-inset-bottom,0px) + 110px);
+  width:min(480px,calc(100vw - 24px));background:var(--panel);
+  border:1px solid var(--line);border-radius:3px;padding:14px;
+  display:none;flex-direction:column;gap:10px;backdrop-filter:blur(6px)}
+.panel.open{display:flex;animation:panelIn .16s ease-out}
+.nbRow:active{background:rgba(160,185,215,0.06)}
+.panel input[type=text],.panel textarea{width:100%;background:rgba(255,255,255,0.03);
+  border:1px solid var(--line);border-radius:2px;color:var(--ink);
+  font-family:var(--mono);font-size:11px;padding:9px;outline:none}
+.panel input[type=text]:focus,.panel textarea:focus{border-color:var(--dim)}
+.panel textarea{height:90px;resize:none}
+.panelRow{display:flex;gap:8px;justify-content:flex-end;align-items:center}
+.panelMsg{font-family:var(--mono);font-size:10px;color:var(--bad);flex:1;min-height:12px}
+
+/* notebook drawer */
+#nbList{display:flex;flex-direction:column;max-height:38vh;overflow-y:auto;overscroll-behavior:contain}
+.nbRow{display:flex;align-items:center;gap:10px;padding:9px 4px;cursor:pointer;
+  border-bottom:1px solid rgba(160,185,215,0.07)}
+.nbRow:last-child{border-bottom:none}
+.nbRow:hover .nbCode{color:var(--ink)}
+.nbChip{width:8px;height:8px;border-radius:50%;flex:none;box-shadow:0 0 8px currentColor}
+.nbCode{font-family:var(--mono);font-size:11px;color:var(--ink);letter-spacing:0.06em}
+.nbKind{font-size:8px;letter-spacing:0.18em;color:var(--faint);text-transform:uppercase;flex:1}
+.nbDel{background:none;border:none;color:var(--faint);font-size:13px;cursor:pointer;padding:2px 6px}
+.nbDel:hover{color:var(--bad)}
+#nbEmpty{font-size:10px;color:var(--faint);letter-spacing:0.1em;padding:10px 2px;text-align:center}
+
+/* toast */
+#toast{position:fixed;left:50%;transform:translateX(-50%);
+  bottom:calc(env(safe-area-inset-bottom,0px) + 160px);
+  background:var(--panel);border:1px solid var(--line);border-radius:2px;
+  font-family:var(--mono);font-size:10px;letter-spacing:0.1em;color:var(--ink);
+  padding:8px 14px;opacity:0;pointer-events:none;transition:opacity .25s}
+#toast.show{opacity:1}
+
+/* jump fade */
+#veil{position:fixed;inset:0;background:var(--void);opacity:0;pointer-events:none;transition:opacity .28s}
+#veil.on{opacity:1}
+
+@media (prefers-reduced-motion: reduce){
+  #veil{transition:none} #toast{transition:none}
+}

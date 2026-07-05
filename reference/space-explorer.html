@@ -1,0 +1,2492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>space-explorer</title>
+<style>
+  :root{
+    --void:#04060b;
+    --ink:rgba(205,220,240,0.88);
+    --dim:rgba(145,165,195,0.48);
+    --faint:rgba(145,165,195,0.26);
+    --line:rgba(160,185,215,0.16);
+    --panel:rgba(8,12,20,0.86);
+    --ok:#93d9ad;
+    --bad:#e09090;
+    --mono:ui-monospace,"SF Mono","Cascadia Mono","Roboto Mono",Menlo,monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",sans-serif;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;overflow:hidden;background:var(--void);color:var(--ink);
+    font-family:var(--sans);user-select:none;-webkit-user-select:none;touch-action:none}
+  #scene{position:fixed;inset:0}
+  canvas{display:block}
+
+  .label{font-size:9px;letter-spacing:0.22em;color:var(--dim);text-transform:uppercase}
+  .mono{font-family:var(--mono)}
+
+  /* top-left readout */
+  #readout{position:fixed;top:calc(env(safe-area-inset-top,0px) + 14px);left:16px;
+    display:flex;flex-direction:column;gap:8px;pointer-events:none}
+  #readout .row{display:flex;align-items:baseline;gap:8px}
+  #readout .val{font-family:var(--mono);font-size:11px;color:var(--ink)}
+  #metaRow{display:flex;align-items:baseline;gap:8px;min-width:0}
+  #metaRow .val{font-family:var(--mono);font-size:10px;color:var(--dim)}
+  .spacer{flex:1}
+  #verifyMsg{font-family:var(--mono);font-size:10px;letter-spacing:0.05em;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .btn.mini{padding:5px 10px;font-size:9px}
+  .btn.sym.mini{padding:3px 8px;font-size:11px}
+  #stillNote{font-size:10px;color:var(--dim);letter-spacing:0.05em}
+  #veilMsg{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+    font-size:9px;letter-spacing:0.3em;color:var(--faint);text-transform:uppercase}
+  @keyframes panelIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+  @keyframes dotIn{from{transform:scale(0);opacity:0}to{transform:scale(1);opacity:1}}
+
+  /* top-right notebook trigger: column of marks */
+  #nbTrigger{position:fixed;top:calc(env(safe-area-inset-top,0px) + 14px);right:16px;
+    display:flex;flex-direction:column;align-items:flex-end;gap:7px;cursor:pointer;
+    padding:2px 2px 10px 14px}
+  #nbDots{display:flex;flex-direction:column;gap:7px;align-items:flex-end}
+  .nbDot{width:5px;height:5px;border-radius:50%;box-shadow:0 0 6px currentColor;animation:dotIn .25s ease-out}
+  #nbCount{font-family:var(--mono);font-size:10px;color:var(--dim);letter-spacing:0.1em}
+
+  /* bottom HUD */
+  #hud{position:fixed;left:0;right:0;bottom:0;display:flex;flex-direction:column;gap:10px;
+    padding:14px 16px calc(env(safe-area-inset-bottom,0px) + 16px);
+    background:linear-gradient(to top,rgba(4,6,11,0.85),rgba(4,6,11,0))}
+  #addrLine{display:flex;align-items:center;gap:10px;cursor:pointer;min-width:0}
+  #addrText{font-family:var(--mono);font-size:11px;color:var(--ink);letter-spacing:0.02em;
+    white-space:nowrap;overflow-x:auto;scrollbar-width:none;flex:1;min-width:0;
+    border-bottom:1px solid var(--line);padding-bottom:5px;touch-action:pan-x}
+  #addrText::-webkit-scrollbar{display:none}
+  #fpText{font-family:var(--mono);font-size:10px;color:var(--dim)}
+  #btnRow{display:flex;gap:8px;flex-wrap:wrap}
+  .btn{appearance:none;background:transparent;border:1px solid var(--line);color:var(--dim);
+    font-family:var(--sans);font-size:9px;letter-spacing:0.2em;text-transform:uppercase;
+    padding:9px 14px;border-radius:2px;cursor:pointer;transition:color .2s,border-color .2s}
+  .btn:hover,.btn:focus-visible{color:var(--ink);border-color:var(--dim);outline:none}
+  .btn:focus-visible{box-shadow:0 0 0 1px var(--dim)}
+  .btn[disabled]{opacity:0.3;pointer-events:none}
+  .btn.active{color:var(--ink);border-color:var(--dim)}
+  .btn.sym{font-size:13px;letter-spacing:0;padding:7px 15px;line-height:1}
+
+  /* panels */
+  .panel{position:fixed;left:50%;transform:translateX(-50%);
+    bottom:calc(env(safe-area-inset-bottom,0px) + 110px);
+    width:min(480px,calc(100vw - 24px));background:var(--panel);
+    border:1px solid var(--line);border-radius:3px;padding:14px;
+    display:none;flex-direction:column;gap:10px;backdrop-filter:blur(6px)}
+  .panel.open{display:flex;animation:panelIn .16s ease-out}
+  .nbRow:active{background:rgba(160,185,215,0.06)}
+  .panel input[type=text],.panel textarea{width:100%;background:rgba(255,255,255,0.03);
+    border:1px solid var(--line);border-radius:2px;color:var(--ink);
+    font-family:var(--mono);font-size:11px;padding:9px;outline:none}
+  .panel input[type=text]:focus,.panel textarea:focus{border-color:var(--dim)}
+  .panel textarea{height:90px;resize:none}
+  .panelRow{display:flex;gap:8px;justify-content:flex-end;align-items:center}
+  .panelMsg{font-family:var(--mono);font-size:10px;color:var(--bad);flex:1;min-height:12px}
+
+  /* notebook drawer */
+  #nbList{display:flex;flex-direction:column;max-height:38vh;overflow-y:auto;overscroll-behavior:contain}
+  .nbRow{display:flex;align-items:center;gap:10px;padding:9px 4px;cursor:pointer;
+    border-bottom:1px solid rgba(160,185,215,0.07)}
+  .nbRow:last-child{border-bottom:none}
+  .nbRow:hover .nbCode{color:var(--ink)}
+  .nbChip{width:8px;height:8px;border-radius:50%;flex:none;box-shadow:0 0 8px currentColor}
+  .nbCode{font-family:var(--mono);font-size:11px;color:var(--ink);letter-spacing:0.06em}
+  .nbKind{font-size:8px;letter-spacing:0.18em;color:var(--faint);text-transform:uppercase;flex:1}
+  .nbDel{background:none;border:none;color:var(--faint);font-size:13px;cursor:pointer;padding:2px 6px}
+  .nbDel:hover{color:var(--bad)}
+  #nbEmpty{font-size:10px;color:var(--faint);letter-spacing:0.1em;padding:10px 2px;text-align:center}
+
+  /* toast */
+  #toast{position:fixed;left:50%;transform:translateX(-50%);
+    bottom:calc(env(safe-area-inset-bottom,0px) + 160px);
+    background:var(--panel);border:1px solid var(--line);border-radius:2px;
+    font-family:var(--mono);font-size:10px;letter-spacing:0.1em;color:var(--ink);
+    padding:8px 14px;opacity:0;pointer-events:none;transition:opacity .25s}
+  #toast.show{opacity:1}
+
+  /* jump fade */
+  #veil{position:fixed;inset:0;background:var(--void);opacity:0;pointer-events:none;transition:opacity .28s}
+  #veil.on{opacity:1}
+
+  @media (prefers-reduced-motion: reduce){
+    #veil{transition:none} #toast{transition:none}
+  }
+</style>
+</head>
+<body>
+<div id="scene"></div>
+
+<div id="readout">
+  <div class="row"><span class="label">seed</span><span class="val" id="seedVal"></span></div>
+  <div class="row"><span class="label">scale</span><span class="val" id="scaleVal"></span></div>
+</div>
+
+<div id="nbTrigger" title="Notebook">
+  <div id="nbDots"></div>
+  <div id="nbCount">✧ 0</div>
+</div>
+
+<div id="hud">
+  <div id="addrLine" title="Copy address">
+    <span class="label">address</span>
+    <span id="addrText" class="mono"></span>
+  </div>
+  <div id="metaRow">
+    <span class="label">fp</span>
+    <span id="fpText"></span>
+    <button class="btn sym mini" id="btnVerify" title="Verify" aria-label="Verify">✓</button>
+    <span id="verifyMsg"></span>
+    <span class="spacer"></span>
+    <span class="label">z</span>
+    <span class="val mono" id="zVal"></span>
+  </div>
+  <div id="btnRow">
+    <button class="btn sym" id="btnMark" title="Mark" aria-label="Mark">✧</button>
+    <button class="btn sym" id="btnUp" title="Up" aria-label="Up" disabled>↑</button>
+    <button class="btn sym" id="btnBack" title="Back" aria-label="Back" disabled>←</button>
+    <button class="btn sym" id="btnJump" title="Jump" aria-label="Jump">⌖</button>
+    <span class="spacer"></span>
+    <button class="btn" id="btnDetail" title="Detail" aria-label="Detail"></button>
+    <button class="btn" id="btnStill" title="Still" aria-label="Still">Still</button>
+    <button class="btn sym" id="btnShot" title="Capture" aria-label="Capture">◉</button>
+  </div>
+</div>
+
+<div class="panel" id="jumpPanel">
+  <span class="label">jump</span>
+  <input type="text" id="jumpInput" autocomplete="off" autocapitalize="off" spellcheck="false">
+  <div class="panelRow">
+    <span class="panelMsg" id="jumpMsg"></span>
+    <button class="btn sym" id="jumpCancel" title="Cancel" aria-label="Cancel">✕</button>
+    <button class="btn sym" id="jumpGo" title="Go" aria-label="Go">↵</button>
+  </div>
+</div>
+
+<div class="panel" id="nbPanel">
+  <span class="label">notebook</span>
+  <div id="nbList"></div>
+  <div id="nbEmpty">nothing written down yet</div>
+  <div class="panelRow">
+    <button class="btn sym" id="nbCopyAll" title="Copy all" aria-label="Copy all">⧉</button>
+    <button class="btn sym" id="nbPaste" title="Paste" aria-label="Paste">＋</button>
+    <button class="btn sym" id="nbClose" title="Close" aria-label="Close">✕</button>
+  </div>
+</div>
+
+<div class="panel" id="pastePanel">
+  <span class="label">paste · one per line</span>
+  <textarea id="pasteArea" autocapitalize="off" spellcheck="false"></textarea>
+  <div class="panelRow">
+    <span class="panelMsg" id="pasteMsg"></span>
+    <button class="btn sym" id="pasteCancel" title="Cancel" aria-label="Cancel">✕</button>
+    <button class="btn sym" id="pasteImport" title="Import" aria-label="Import">↵</button>
+  </div>
+</div>
+
+<div class="panel" id="stillPanel">
+  <span class="label">still · maximum detail</span>
+  <span id="stillNote">Heavy load. May be unstable on some devices.</span>
+  <div class="panelRow">
+    <button class="btn sym" id="stillCancel" title="Cancel" aria-label="Cancel">✕</button>
+    <button class="btn sym" id="stillGo" title="Enable" aria-label="Enable">↵</button>
+  </div>
+</div>
+
+<div id="toast"></div>
+<div id="veil"><span id="veilMsg"></span></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+"use strict";
+/* ============================================================
+   space-explorer · Phase 1
+   Sections: core/hash, core/address, gen, state, render, ui
+   The CORE block (between CORE-BEGIN / CORE-END) is pure JS with
+   no DOM or THREE dependency, so it can also run under Node.js
+   for deterministic regression checks.
+   ============================================================ */
+
+/* CORE-BEGIN */
+/* ==================== core/hash ==================== */
+const SE = (function(){
+
+  function mix32(h){
+    h = h >>> 0;
+    h ^= h >>> 16; h = Math.imul(h, 0x21f0aaad);
+    h ^= h >>> 15; h = Math.imul(h, 0x735a2d97);
+    h ^= h >>> 15;
+    return h >>> 0;
+  }
+  // splitmix-style chain combine: order-sensitive, deterministic
+  function combine(h, x){
+    h = (h ^ mix32((x >>> 0) + 0x9e3779b9)) >>> 0;
+    return mix32((h + 0x85ebca6b) >>> 0);
+  }
+  function chain(h, ...xs){ for(const x of xs) h = combine(h, x); return h; }
+  function hashStr(s){
+    let h = 0x811c9dc5;
+    for(let i = 0; i < s.length; i++){
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 0x01000193);
+    }
+    return mix32(h);
+  }
+  function mulberry32(a){
+    a = a >>> 0;
+    return function(){
+      a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  const hex8 = h => (h >>> 0).toString(16).padStart(8, "0");
+
+  /* ==================== core/address ==================== */
+  // Segment order: S -> W -> C -> G -> Y -> P -> M
+  // Any suffix may be omitted; interior segments may be skipped
+  // (e.g. a galaxy directly on a filament: S/W/G). Order is fixed.
+  const SEG_ORDER = ["W","C","G","Y","P","M"];
+  const WEB_KINDS = ["void","wall","filament","node"];
+  const KIND_LABEL = { S:"seed", W:"web", C:"cluster", G:"galaxy", Y:"system", P:"planet", M:"moon" };
+  const TAG = { S:0x53, W:0x57, C:0x43, G:0x47, Y:0x59, P:0x50, M:0x4d, INIT:0x1234abcd, LOCAL_NONE:0x7fffffff };
+  const MAX_INDEX = 1000000;
+
+  function serializeAddress(a){
+    const parts = ["S" + a.seed];
+    for(const s of a.segs){
+      if(s.k === "W"){
+        let t = "W:cell=" + s.cell.join(",") + ";f=" + s.f.kind + "," + s.f.id;
+        if(s.f.local !== undefined) t += "," + s.f.local;
+        parts.push(t);
+      }else{
+        parts.push(s.k + ":" + s.i);
+      }
+    }
+    return parts.join("/");
+  }
+
+  function fail(error){ return { ok:false, error }; }
+  const isInt = n => Number.isInteger(n);
+
+  function parseAddress(str){
+    if(typeof str !== "string") return fail("empty");
+    const parts = str.trim().split("/").filter(p => p.length > 0);
+    if(parts.length === 0) return fail("empty");
+    const head = parts[0];
+    if(!/^S[A-Za-z0-9\-]{1,32}$/.test(head)) return fail("bad seed segment");
+    const addr = { seed: head.slice(1), segs: [] };
+    let orderPos = -1;
+    for(let i = 1; i < parts.length; i++){
+      const p = parts[i];
+      const k = p[0];
+      const pos = SEG_ORDER.indexOf(k);
+      if(pos < 0) return fail("unknown segment '" + k + "'");
+      if(pos <= orderPos) return fail("segment order violated at '" + k + "'");
+      orderPos = pos;
+      if(k === "W"){
+        const body = p.slice(2);
+        if(p[1] !== ":") return fail("bad W segment");
+        const fields = {};
+        for(const kv of body.split(";")){
+          const eq = kv.indexOf("=");
+          if(eq < 0) return fail("bad W field '" + kv + "'");
+          fields[kv.slice(0, eq)] = kv.slice(eq + 1);
+        }
+        if(!fields.cell || !fields.f) return fail("W needs cell and f");
+        const cell = fields.cell.split(",").map(Number);
+        if(cell.length !== 3 || !cell.every(isInt)) return fail("bad cell coords");
+        if(!cell.every(c => Math.abs(c) < MAX_INDEX)) return fail("cell out of range");
+        const fp = fields.f.split(",");
+        if(fp.length < 2 || fp.length > 3) return fail("bad f field");
+        if(!WEB_KINDS.includes(fp[0])) return fail("bad web kind '" + fp[0] + "'");
+        const id = Number(fp[1]);
+        if(!isInt(id) || id < 0 || id >= MAX_INDEX) return fail("bad f id");
+        const f = { kind: fp[0], id };
+        if(fp.length === 3){
+          const local = Number(fp[2]);
+          if(!isInt(local) || local < 0 || local >= MAX_INDEX) return fail("bad f local");
+          f.local = local;
+        }
+        addr.segs.push({ k:"W", cell, f });
+      }else{
+        const m = /^[CGYPM]:(\d{1,7})$/.exec(p);
+        if(!m) return fail("bad segment '" + p + "'");
+        const idx = Number(m[1]);
+        if(idx >= MAX_INDEX) return fail("index out of range");
+        addr.segs.push({ k, i: idx });
+      }
+    }
+    return { ok:true, addr };
+  }
+
+  function chainHash(addr){
+    let h = chain(hashStr(addr.seed), TAG.S);
+    for(const s of addr.segs){
+      if(s.k === "W"){
+        h = chain(h, TAG.W, s.cell[0], s.cell[1], s.cell[2],
+                  WEB_KINDS.indexOf(s.f.kind), s.f.id,
+                  s.f.local === undefined ? TAG.LOCAL_NONE : s.f.local);
+      }else{
+        h = chain(h, TAG[s.k], s.i);
+      }
+    }
+    return h;
+  }
+
+  function deepestKind(addr){
+    return addr.segs.length ? addr.segs[addr.segs.length - 1].k : "S";
+  }
+
+  /* ==================== gen ==================== */
+  const q = (v, s=1000) => Math.round(v * s);
+
+  // hue helpers on plain numbers so fingerprints stay DOM/THREE-free
+  function hsl2rgb(h, s, l){
+    h = ((h % 1) + 1) % 1;
+    const f = n => {
+      const k = (n + h * 12) % 12;
+      return l - s * Math.min(l, 1 - l) * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+    };
+    return [f(0), f(8), f(4)];
+  }
+  const rgbInt = c => (q(c[0],255) << 16) | (q(c[1],255) << 8) | q(c[2],255);
+
+  function genPlanet(rng, isMoon){
+    const roll = rng();
+    const archetype = isMoon ? (roll < 0.8 ? "rocky" : "ice")
+                    : (roll < 0.55 ? "rocky" : roll < 0.80 ? "gas" : "ice");
+    const radius = isMoon ? 0.45 + rng() * 0.35
+                 : archetype === "gas" ? 1.0 + rng() * 0.6
+                 : 0.55 + rng() * 0.45;
+    let hue, sat, lit;
+    if(archetype === "rocky"){ hue = [0.02,0.07,0.10,0.32,0.58][Math.floor(rng()*5)] + rng()*0.03; sat = 0.25 + rng()*0.3; lit = 0.34 + rng()*0.14; }
+    else if(archetype === "gas"){ hue = [0.06,0.09,0.13,0.48,0.90][Math.floor(rng()*5)] + rng()*0.04; sat = 0.30 + rng()*0.35; lit = 0.48 + rng()*0.16; }
+    else { hue = 0.50 + rng()*0.14; sat = 0.12 + rng()*0.22; lit = 0.62 + rng()*0.18; }
+    const base = hsl2rgb(hue, sat, lit);
+    const alt  = hsl2rgb(hue + (rng()-0.5)*0.09, sat*(0.7+rng()*0.5), lit*(0.72+rng()*0.3));
+    const band = hsl2rgb(hue + (rng()-0.5)*0.16, Math.min(1, sat*1.2), lit*(0.85+rng()*0.35));
+    const pole = hsl2rgb(hue + 0.02, sat*0.25, 0.82 + rng()*0.12);
+    const atmo = hsl2rgb(hue + (rng() < 0.5 ? 0.05 : -0.05), 0.5, 0.65);
+    const hasAtmo = archetype === "gas" ? true : rng() < 0.6;
+    const bands = archetype === "gas" ? 4 + Math.floor(rng()*7) : 0;
+    const noiseScale = 2.5 + rng()*4;
+    const poleCap = archetype !== "gas" && rng() < 0.55 ? 0.72 + rng()*0.15 : 0;
+    const tilt = (rng()-0.5) * 0.9;
+    const spin = 0.03 + rng()*0.08;
+    const ringRoll = rng();
+    const ringP = archetype === "gas" ? 0.45 : archetype === "ice" ? 0.15 : 0.05;
+    let ring = null;
+    if(!isMoon && ringRoll < ringP){
+      ring = {
+        inner: 1.35 + rng()*0.25,
+        outer: 1.9 + rng()*0.7,
+        alpha: 0.35 + rng()*0.35,
+        tint: hsl2rgb(hue + (rng()-0.5)*0.06, sat*0.5, 0.6 + rng()*0.2),
+        seed: Math.floor(rng()*0xffffffff)
+      };
+    }
+    const moonCount = isMoon ? 0
+      : Math.floor(rng() * (archetype === "gas" ? 5.6 : 3.4));
+    const moons = [];
+    for(let i = 0; i < moonCount; i++){
+      moons.push({
+        size: 0.05 + rng()*0.07,
+        dist: 2.1 + i*0.75 + rng()*0.5,
+        speed: (0.10 + rng()*0.16) * (rng() < 0.12 ? -1 : 1),
+        phase: rng()*Math.PI*2,
+        incl: (rng()-0.5)*0.4,
+        shade: 0.45 + rng()*0.35
+      });
+    }
+    return { archetype, radius, base, alt, band, pole, atmo, hasAtmo,
+             bands, noiseScale, poleCap, tilt, spin, ring, moons };
+  }
+
+  // Proxy bodies for addresses that stop above planet depth.
+  // Phase 1 renders these as calm glowing spheres; later phases
+  // replace them with real scale representations.
+  function genProxy(rng, kind){
+    const hueBase = { S:0.62, W:0.58, C:0.75, G:0.68, Y:0.12 }[kind];
+    const hue = hueBase + (rng()-0.5)*0.1;
+    const color = hsl2rgb(hue, 0.45 + rng()*0.3, 0.6 + rng()*0.2);
+    return { color, radius: 0.9, glow: 0.6 + rng()*0.4, pulse: 0.4 + rng()*0.6 };
+  }
+
+  function fingerprintPlanet(p){
+    let h = 0xC0FFEE11;
+    h = chain(h, hashStr(p.archetype), q(p.radius),
+      rgbInt(p.base), rgbInt(p.alt), rgbInt(p.band), rgbInt(p.pole), rgbInt(p.atmo),
+      p.hasAtmo ? 1 : 0, p.bands, q(p.noiseScale), q(p.poleCap), q(p.tilt), q(p.spin));
+    if(p.ring) h = chain(h, 1, q(p.ring.inner), q(p.ring.outer), q(p.ring.alpha), rgbInt(p.ring.tint), p.ring.seed);
+    else h = chain(h, 0);
+    h = chain(h, p.moons.length);
+    for(const m of p.moons) h = chain(h, q(m.size), q(m.dist), q(m.speed), q(m.phase), q(m.incl), q(m.shade));
+    return hex8(h);
+  }
+  function fingerprintProxy(kind, p){
+    return hex8(chain(0xC0FFEE22, hashStr(kind), rgbInt(p.color), q(p.glow), q(p.pulse)));
+  }
+
+  // A moon's detailed face must agree with the face its parent
+  // planet already shows: size and shade are inherited from the
+  // parent's stable moon entry, then the fingerprint is computed
+  // from the final params (derivation from shared stable params).
+  function inheritMoonFace(params, mm){
+    params.radius = 0.4 + mm.size * 3.5;
+    const g = [mm.shade, mm.shade, mm.shade * 1.04];
+    const mixTo = (c, t) => c.map((v, k) => v * (1 - t) + g[k] * t);
+    params.base = mixTo(params.base, 0.6);
+    params.alt  = mixTo(params.alt, 0.6);
+    params.band = mixTo(params.band, 0.45);
+    params.hasAtmo = false;
+  }
+
+  // resolve: address -> stable descriptor (no DOM, no THREE)
+  function resolveFresh(addr){
+    const h = chainHash(addr);
+    const kind = deepestKind(addr);
+    const rng = mulberry32(h);
+    let params, fingerprint, bodyType;
+    if(kind === "P" || kind === "M"){
+      bodyType = "planet";
+      params = genPlanet(rng, kind === "M");
+      if(kind === "M"){
+        const par = parentAddress(addr);
+        if(par && deepestKind(par) === "P"){
+          const idx = addr.segs[addr.segs.length - 1].i;
+          const mm = resolve(par).params.moons[idx];
+          if(mm) inheritMoonFace(params, mm);
+        }
+      }
+      fingerprint = fingerprintPlanet(params);
+    }else{
+      bodyType = "proxy";
+      params = genProxy(rng, kind);
+      fingerprint = fingerprintProxy(kind, params);
+    }
+    return { kind, kindLabel: KIND_LABEL[kind], bodyType, params, fingerprint, chain: h };
+  }
+
+  const _cache = new Map();
+  function resolve(addr){
+    const key = serializeAddress(addr);
+    if(_cache.has(key)) return _cache.get(key);
+    const d = resolveFresh(addr);
+    _cache.set(key, d);
+    return d;
+  }
+  function clearCache(){ _cache.clear(); _webMemo.clear(); }
+
+  // deterministic initial focus point for a seed: an ordinary planet
+  // on a real node of the web, every index within canonical range
+  function initialAddress(seed){
+    const rng = mulberry32(chain(hashStr(seed), TAG.INIT));
+    const ri = n => Math.floor(rng() * n);
+    let cell = [ri(49)-24, ri(49)-24, ri(49)-24];
+    for(let t = 0; t < 64; t++){
+      if(cellFeatures(seed, cell).node.length) break;
+      cell = [ri(49)-24, ri(49)-24, ri(49)-24];
+    }
+    const nodes = cellFeatures(seed, cell).node;
+    let a = { seed, segs: [{ k:"W", cell, f:{ kind:"node", id: nodes.length ? ri(nodes.length) : 0 } }] };
+    for(const ck of ["C","G","Y","P"]){
+      const n = canonicalChildCount(a, ck);
+      if(!n) break;
+      a = { seed, segs: [...a.segs, { k: ck, i: ri(n) }] };
+    }
+    return a;
+  }
+
+  /* ---- neighborhood (Phase 2) ---- */
+  // Candidate enumeration uses canonical child counts derived from the
+  // parent's hash. `jump` intentionally remains unrestricted: any index
+  // resolves (reachability of unvisited targets), but only canonical
+  // indices are offered as visible candidates.
+  const CHILD_KIND = { S:"W", W:"C", C:"G", G:"Y", Y:"P", P:"M", M:null };
+  const SALT_COUNT = 0xC41D5;
+  const SALT_FEAT  = 0xFEA70;
+
+  function parentAddress(addr){
+    if(!addr.segs.length) return null;
+    return { seed: addr.seed, segs: addr.segs.slice(0, -1) };
+  }
+
+  // Number of canonical children of `parent` having kind `childKind`.
+  // (childKind is passed explicitly so skip-level addresses like S/W/G
+  // still enumerate siblings correctly.)
+  function canonicalChildCount(parent, childKind){
+    const pk = deepestKind(parent);
+    if(childKind === "M" && pk === "P"){
+      return resolve(parent).params.moons.length;   // matches rendered moons
+    }
+    const rng = mulberry32(chain(chainHash(parent), TAG[childKind], SALT_COUNT));
+    switch(childKind){
+      case "C": {
+        const wk = pk === "W" ? parent.segs[parent.segs.length-1].f.kind : "node";
+        if(wk === "node")     return 2 + Math.floor(rng()*4); // 2..5
+        if(wk === "filament") return 1 + Math.floor(rng()*3); // 1..3
+        if(wk === "wall")     return 1 + Math.floor(rng()*2); // 1..2
+        return Math.floor(rng()*2);                           // void: 0..1
+      }
+      case "G": return 8 + Math.floor(rng()*13);   // 8..20 galaxies
+      case "Y": return 10 + Math.floor(rng()*15);  // 10..24 systems
+      case "P": return 3 + Math.floor(rng()*6);    // 3..8 planets
+      case "M": return Math.floor(rng()*3);        // skip-level moons 0..2
+      default: return 0;
+    }
+  }
+
+  /* ---- cosmic web: Worley-style approximation (Phase 4) ----
+     One seed point per grid cell, position from the cell hash.
+     Classification of any point by distances F1..F4 to nearby seeds:
+     small F2-F1 = wall, small F3-F1 = filament, small F4-F1 = node.
+     Voronoi vertices (nodes) are computed explicitly as circumcenters
+     of 4 seeds passing a local empty-sphere test; edges (filaments)
+     connect vertex pairs sharing 3 parent seeds. Every feature is
+     owned by the cell containing its representative point, giving it
+     a stable id and therefore a stable address. */
+  const SALT_SEEDPT = 0x5EED0;
+  const SALT_DUST   = 0xD0570;
+
+  function seedPointOf(seedStr, cx, cy, cz){
+    const rng = mulberry32(chain(hashStr(seedStr), SALT_SEEDPT, cx, cy, cz));
+    return [cx + rng(), cy + rng(), cz + rng()];
+  }
+  function seedsAround(seedStr, cx, cy, cz, r){
+    const out = [];
+    for(let dx = -r; dx <= r; dx++)
+      for(let dy = -r; dy <= r; dy++)
+        for(let dz = -r; dz <= r; dz++){
+          const c = [cx+dx, cy+dy, cz+dz];
+          out.push({ cell: c, pos: seedPointOf(seedStr, c[0], c[1], c[2]) });
+        }
+    return out;
+  }
+  const d2 = (a, b) => {
+    const x = a[0]-b[0], y = a[1]-b[1], z = a[2]-b[2];
+    return x*x + y*y + z*z;
+  };
+
+  // sorted seed distances at a point; basis of classification & density
+  function fDistances(seedStr, p){
+    const c = [Math.floor(p[0]), Math.floor(p[1]), Math.floor(p[2])];
+    const seeds = seedsAround(seedStr, c[0], c[1], c[2], 1);
+    for(const s of seeds) s.d = Math.sqrt(d2(s.pos, p));
+    seeds.sort((a, b) => a.d - b.d);
+    return seeds;
+  }
+  // density from proximity to wall / filament / node structures;
+  // tuned dark: deep voids stay nearly empty, matter clings tightly
+  function webDensity(seedStr, p){
+    const s = fDistances(seedStr, p);
+    const w = s[1].d - s[0].d, f = s[2].d - s[0].d, n = s[3].d - s[0].d;
+    return 0.06 * Math.exp(-(w*w)/0.014)
+         + 0.30 * Math.exp(-(f*f)/0.006)
+         + 1.00 * Math.exp(-(n*n)/0.0035)
+         + 0.004;
+  }
+
+  function circumcenter4(p0, p1, p2, p3){
+    const m = [], b = [];
+    for(const p of [p1, p2, p3]){
+      m.push([p[0]-p0[0], p[1]-p0[1], p[2]-p0[2]]);
+      b.push(0.5 * (d2(p, [0,0,0]) - d2(p0, [0,0,0])));
+    }
+    const det = m[0][0]*(m[1][1]*m[2][2]-m[1][2]*m[2][1])
+              - m[0][1]*(m[1][0]*m[2][2]-m[1][2]*m[2][0])
+              + m[0][2]*(m[1][0]*m[2][1]-m[1][1]*m[2][0]);
+    if(Math.abs(det) < 1e-9) return null;
+    const cx = (b[0]*(m[1][1]*m[2][2]-m[1][2]*m[2][1])
+              - m[0][1]*(b[1]*m[2][2]-m[1][2]*b[2])
+              + m[0][2]*(b[1]*m[2][1]-m[1][1]*b[2])) / det;
+    const cy = (m[0][0]*(b[1]*m[2][2]-m[1][2]*b[2])
+              - b[0]*(m[1][0]*m[2][2]-m[1][2]*m[2][0])
+              + m[0][2]*(m[1][0]*b[2]-b[1]*m[2][0])) / det;
+    const cz = (m[0][0]*(m[1][1]*b[2]-b[1]*m[2][1])
+              - m[0][1]*(m[1][0]*b[2]-b[1]*m[2][0])
+              + b[0]*(m[1][0]*m[2][1]-m[1][1]*m[2][0])) / det;
+    return [cx, cy, cz];
+  }
+
+  const qk = v => Math.round(v * 4096);
+  const posKey = p => qk(p[0]) + "," + qk(p[1]) + "," + qk(p[2]);
+  const cellKey = c => c[0] + "," + c[1] + "," + c[2];
+  const inCell = (p, c) => Math.floor(p[0]) === c[0] && Math.floor(p[1]) === c[1] && Math.floor(p[2]) === c[2];
+
+  // enumeration memo: pure derivation, safe to cache; cleared with
+  // the resolve cache so verification stays cache-independent
+  const _webMemo = new Map();
+  function memo(key, fn){
+    if(_webMemo.has(key)) return _webMemo.get(key);
+    const v = fn();
+    if(_webMemo.size > 4000) _webMemo.clear();
+    _webMemo.set(key, v);
+    return v;
+  }
+
+  // Voronoi vertices owned by a cell: circumcenters of (own seed +
+  // 3 of its 10 nearest neighbours) with a locally empty circumsphere
+  function cellNodes(seedStr, cell){
+    return memo("n|" + seedStr + "|" + cellKey(cell), () => {
+      const all = seedsAround(seedStr, cell[0], cell[1], cell[2], 1);
+      const ownKey = cellKey(cell);
+      const own = all.find(s => cellKey(s.cell) === ownKey);
+      const others = all.filter(s => s !== own)
+        .sort((a, b) => d2(a.pos, own.pos) - d2(b.pos, own.pos))
+        .slice(0, 10);
+      const nodes = [], seen = new Set();
+      for(let i = 0; i < others.length; i++)
+        for(let j = i+1; j < others.length; j++)
+          for(let k = j+1; k < others.length; k++){
+            const quad = [own, others[i], others[j], others[k]];
+            const cc = circumcenter4(own.pos, others[i].pos, others[j].pos, others[k].pos);
+            if(!cc || !inCell(cc, cell)) continue;
+            const r2 = d2(cc, own.pos);
+            let empty = true;
+            for(const s of all){
+              if(quad.includes(s)) continue;
+              if(d2(cc, s.pos) < r2 - 1e-9){ empty = false; break; }
+            }
+            if(!empty) continue;
+            const key = posKey(cc);
+            if(seen.has(key)) continue;
+            seen.add(key);
+            nodes.push({ pos: cc,
+              parents: quad.map(s => cellKey(s.cell)).sort() });
+          }
+      nodes.sort((a, b) => qk(a.pos[0]) - qk(b.pos[0]) || qk(a.pos[1]) - qk(b.pos[1]) || qk(a.pos[2]) - qk(b.pos[2]));
+      return nodes;
+    });
+  }
+
+  // all features owned by a cell, with stable ids per kind
+  function cellFeatures(seedStr, cell){
+    return memo("f|" + seedStr + "|" + cellKey(cell), () => {
+      const nodes = cellNodes(seedStr, cell);
+      // filaments: pairs of nearby Voronoi vertices sharing 3 parents,
+      // owned by the cell containing the edge midpoint
+      const nearNodes = [];
+      for(let dx = -1; dx <= 1; dx++)
+        for(let dy = -1; dy <= 1; dy++)
+          for(let dz = -1; dz <= 1; dz++)
+            nearNodes.push(...cellNodes(seedStr, [cell[0]+dx, cell[1]+dy, cell[2]+dz]));
+      const filaments = [], fseen = new Set();
+      for(let i = 0; i < nearNodes.length; i++)
+        for(let j = i+1; j < nearNodes.length; j++){
+          const a = nearNodes[i], b = nearNodes[j];
+          let shared = 0;
+          for(const pk of a.parents) if(b.parents.includes(pk)) shared++;
+          if(shared !== 3) continue;
+          const mid = [(a.pos[0]+b.pos[0])/2, (a.pos[1]+b.pos[1])/2, (a.pos[2]+b.pos[2])/2];
+          if(!inCell(mid, cell)) continue;
+          const key = posKey(mid);
+          if(fseen.has(key)) continue;
+          fseen.add(key);
+          filaments.push({ pos: mid, a: a.pos, b: b.pos });
+        }
+      filaments.sort((a, b) => qk(a.pos[0]) - qk(b.pos[0]) || qk(a.pos[1]) - qk(b.pos[1]) || qk(a.pos[2]) - qk(b.pos[2]));
+      // walls: seed pairs whose midpoint lies in this cell and whose
+      // two nearest seeds are exactly that pair
+      const all = seedsAround(seedStr, cell[0], cell[1], cell[2], 1);
+      const walls = [];
+      for(let i = 0; i < all.length; i++)
+        for(let j = i+1; j < all.length; j++){
+          const mid = [(all[i].pos[0]+all[j].pos[0])/2, (all[i].pos[1]+all[j].pos[1])/2, (all[i].pos[2]+all[j].pos[2])/2];
+          if(!inCell(mid, cell)) continue;
+          const s = fDistances(seedStr, mid);
+          const near2 = [cellKey(s[0].cell), cellKey(s[1].cell)].sort().join("|");
+          const pair2 = [cellKey(all[i].cell), cellKey(all[j].cell)].sort().join("|");
+          if(near2 !== pair2) continue;
+          walls.push({ pos: mid });
+        }
+      walls.sort((a, b) => qk(a.pos[0]) - qk(b.pos[0]) || qk(a.pos[1]) - qk(b.pos[1]) || qk(a.pos[2]) - qk(b.pos[2]));
+      // void: the cell's own seed point, the local density minimum region
+      const own = all.find(s => cellKey(s.cell) === cellKey(cell));
+      return { node: nodes, filament: filaments, wall: walls, void: [{ pos: own.pos.slice() }] };
+    });
+  }
+
+  // detail of one addressed feature (position, filament endpoints);
+  // exists=false for indices outside the current enumeration, which
+  // still resolve as identities but have no geometric placement
+  function webFeature(seedStr, wseg){
+    const feats = cellFeatures(seedStr, wseg.cell);
+    const list = feats[wseg.f.kind] || [];
+    const item = list[wseg.f.id];
+    if(!item) return { exists: false };
+    return { exists: true, kind: wseg.f.kind, pos: item.pos.slice(),
+             a: item.a ? item.a.slice() : null, b: item.b ? item.b.slice() : null };
+  }
+
+  // deterministic dust field: rejection-sampled from the density.
+  // The seed grid for the whole sampled box is built once up front,
+  // so hundreds of thousands of attempts stay cheap; this dust IS
+  // the visible structure of the web. Optional spherical feathering
+  // (featherR = [r0, r1] in cell units from the cell center) melts
+  // the data boundary into darkness: the edge of what is drawn reads
+  // as the limit of sight, never as the edge of the universe.
+  function sampleWebDust(seedStr, cell, r, attempts, featherR, minR){
+    const rng = mulberry32(chain(hashStr(seedStr), SALT_DUST, cell[0], cell[1], cell[2]));
+    const span = 2*r + 1;
+    const cx = cell[0] + 0.5, cy = cell[1] + 0.5, cz = cell[2] + 0.5;
+    // precompute seeds for the box plus a 1-cell margin
+    const R = r + 1, side = 2*R + 1;
+    const grid = new Array(side*side*side);
+    for(let dx = -R; dx <= R; dx++)
+      for(let dy = -R; dy <= R; dy++)
+        for(let dz = -R; dz <= R; dz++){
+          grid[(dx+R) + (dy+R)*side + (dz+R)*side*side] =
+            seedPointOf(seedStr, cell[0]+dx, cell[1]+dy, cell[2]+dz);
+        }
+    const pts = [], w = [];
+    for(let t = 0; t < attempts; t++){
+      const p = [cell[0] - r + rng()*span, cell[1] - r + rng()*span, cell[2] - r + rng()*span];
+      let fw = 1;
+      if(featherR || minR){
+        const rx = p[0]-cx, ry = p[1]-cy, rz = p[2]-cz;
+        const dist = Math.sqrt(rx*rx + ry*ry + rz*rz);
+        if(minR && dist < minR) continue;   // annulus sampling
+        if(featherR){
+          fw = Math.max(0, Math.min(1, 1 - (dist - featherR[0]) / (featherR[1] - featherR[0])));
+          if(fw <= 0) continue;
+        }
+      }
+      const gx = Math.floor(p[0]) - cell[0], gy = Math.floor(p[1]) - cell[1], gz = Math.floor(p[2]) - cell[2];
+      // four smallest squared distances among the 27 surrounding seeds
+      let f1 = 1e9, f2 = 1e9, f3 = 1e9, f4 = 1e9;
+      for(let dx = -1; dx <= 1; dx++)
+        for(let dy = -1; dy <= 1; dy++)
+          for(let dz = -1; dz <= 1; dz++){
+            const s = grid[(gx+dx+R) + (gy+dy+R)*side + (gz+dz+R)*side*side];
+            const ex = s[0]-p[0], ey = s[1]-p[1], ez = s[2]-p[2];
+            const dd = ex*ex + ey*ey + ez*ez;
+            if(dd < f1){ f4 = f3; f3 = f2; f2 = f1; f1 = dd; }
+            else if(dd < f2){ f4 = f3; f3 = f2; f2 = dd; }
+            else if(dd < f3){ f4 = f3; f3 = dd; }
+            else if(dd < f4){ f4 = dd; }
+          }
+      const s1 = Math.sqrt(f1);
+      const wv = Math.sqrt(f2) - s1, fv = Math.sqrt(f3) - s1, nv = Math.sqrt(f4) - s1;
+      const dens = 0.06 * Math.exp(-(wv*wv)/0.014)
+                 + 0.30 * Math.exp(-(fv*fv)/0.006)
+                 + 1.00 * Math.exp(-(nv*nv)/0.0035)
+                 + 0.004;
+      if(rng() < dens * fw){
+        pts.push(p[0], p[1], p[2]);
+        w.push(Math.min(1, dens) * (0.35 + 0.65 * fw));
+      }
+    }
+    return { pts, w };
+  }
+
+  // features in a cell and its 26 neighbours, as address objects
+  // (order: cells lexicographic, then kind, then id — deterministic)
+  function webFeaturesAround(seed, cell){
+    const out = [];
+    for(let dx = -1; dx <= 1; dx++)
+      for(let dy = -1; dy <= 1; dy++)
+        for(let dz = -1; dz <= 1; dz++){
+          const c = [cell[0]+dx, cell[1]+dy, cell[2]+dz];
+          const feats = cellFeatures(seed, c);
+          for(const kind of WEB_KINDS){
+            for(let id = 0; id < feats[kind].length; id++){
+              out.push({ seed, segs: [{ k:"W", cell: c, f: { kind, id } }] });
+            }
+          }
+        }
+    return out;
+  }
+
+  function neighborhood(addr){
+    const kind = deepestKind(addr);
+    const self = serializeAddress(addr);
+    const parent = parentAddress(addr);
+    const siblings = [], children = [];
+
+    if(kind === "S"){
+      // root: offer the web features of the origin cell as children
+      for(const a of webFeaturesAround(addr.seed, [0,0,0])) children.push(a);
+    }else if(kind === "W"){
+      const cell = addr.segs[addr.segs.length-1].cell;
+      for(const a of webFeaturesAround(addr.seed, cell)){
+        if(serializeAddress(a) !== self) siblings.push(a);
+      }
+      const n = canonicalChildCount(addr, "C");
+      for(let i = 0; i < n; i++) children.push({ seed: addr.seed, segs: [...addr.segs, { k:"C", i }] });
+    }else{
+      const prefix = addr.segs.slice(0, -1);
+      const n = canonicalChildCount(parent, kind);
+      for(let i = 0; i < n; i++){
+        const a = { seed: addr.seed, segs: [...prefix, { k: kind, i }] };
+        if(serializeAddress(a) !== self) siblings.push(a);
+      }
+      const ck = CHILD_KIND[kind];
+      if(ck){
+        const m = canonicalChildCount(addr, ck);
+        for(let i = 0; i < m; i++) children.push({ seed: addr.seed, segs: [...addr.segs, { k: ck, i }] });
+      }
+    }
+    return { parent, siblings, children };
+  }
+
+  /* ---- zoom path (Phase 3) ---- */
+  // Display-stage anchors: 0 planet · 1 system · 2 galaxy · 3 cluster · 4 web.
+  // Real ancestors come from the focus address; below the focus a
+  // deterministic representative descent (child index = parent hash
+  // mod canonical count) fills the remaining stages, so zooming in is
+  // always meaningful and always lands on the same objects.
+  const STAGE_OF_KIND = { P:0, M:0, Y:1, G:2, C:3, W:4, S:4 };
+  const DESCEND_KIND  = { W:"C", C:"G", G:"Y", Y:"P" };
+  function zoomPath(focusAddr){
+    const anchors = new Array(5).fill(null);
+    let cum = { seed: focusAddr.seed, segs: [] };
+    for(const seg of focusAddr.segs){
+      cum = { seed: cum.seed, segs: [...cum.segs, seg] };
+      anchors[STAGE_OF_KIND[seg.k]] = cum;
+    }
+    let cur = focusAddr;
+    while(true){
+      const k = deepestKind(cur);
+      if(STAGE_OF_KIND[k] === 0) break;
+      let next = null;
+      if(k === "S"){
+        const feats = neighborhood(cur).children;
+        if(!feats.length) break;
+        next = feats[chainHash(cur) % feats.length];
+      }else{
+        const ck = DESCEND_KIND[k];
+        const n = canonicalChildCount(cur, ck);
+        if(!n) break;   // e.g. an empty void: zoom stops at this stage
+        next = { seed: cur.seed, segs: [...cur.segs, { k: ck, i: chainHash(cur) % n }] };
+      }
+      const ns = STAGE_OF_KIND[deepestKind(next)];
+      if(!anchors[ns]) anchors[ns] = next;
+      cur = next;
+    }
+    return anchors;
+  }
+
+  return { mix32, combine, chain, hashStr, mulberry32, hex8,
+           WEB_KINDS, KIND_LABEL, STAGE_OF_KIND,
+           serializeAddress, parseAddress, chainHash, deepestKind,
+           resolve, resolveFresh, clearCache, initialAddress,
+           parentAddress, canonicalChildCount, neighborhood, zoomPath,
+           seedPointOf, fDistances, webDensity, cellFeatures,
+           webFeature, sampleWebDust };
+})();
+/* CORE-END */
+
+/* ==================== state ==================== */
+const DEFAULT_SEED = "7f3e2d";
+const state = {
+  addr: null,        // focus target (deepest truth of the path)
+  addrStr: "",       // canonical serialized focus address
+  anchors: null,     // per-stage anchor addresses (0..4)
+  data: null,        // per-stage display data
+  viewStage: -1,     // stage currently in view (follows zoom Z)
+  viewAddrStr: "",   // address shown in the HUD
+  viewDesc: null,    // its resolved descriptor
+  prevAddrStr: null, // one-step back
+  bookmarks: []      // { a, fp, code, kind, colorCss }
+};
+
+/* ==================== render ==================== */
+const R = (function(){
+  const root = document.getElementById("scene");
+  const renderer = new THREE.WebGLRenderer({ antialias:true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 0.85;
+  root.appendChild(renderer.domElement);
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x02040a);
+  const camera = new THREE.PerspectiveCamera(50, window.innerWidth/window.innerHeight, 0.05, 200000);
+
+  const sun = new THREE.DirectionalLight(0xfff4e0, 0.95);
+  sun.position.set(3.5, 1.6, 2.4);
+  scene.add(sun);
+  const fill = new THREE.DirectionalLight(0x334466, 0.28);
+  fill.position.set(-3, -1, -2);
+  scene.add(fill);
+  scene.add(new THREE.AmbientLight(0x8899bb, 0.3));
+
+  // --- the sky from within (Phase 5 / view-from-inside) ---
+  // Standing on a planet, the sky is not decoration: it is the home
+  // galaxy seen from inside — thousands of stars concentrated toward
+  // the galactic plane, a soft milky band, and a few neighbouring
+  // galaxies as barely-there smudges. Synthesized deterministically
+  // from the galaxy and system chains, not physically projected, so
+  // the same planet always shows the same sky.
+  let sky = null;
+  function buildSky(sd){
+    if(sky){ scene.remove(sky.group); disposeGroup(sky.group); }
+    sky = { group: new THREE.Group(), mats: [] };
+    const rng = SE.mulberry32(SE.chain(sd.chain, 0x5C1E));
+    const gauss = () => (rng()+rng()+rng()+rng()-2)/2;
+    const R = 150;
+    // the milky band lies along the home galaxy's actual disc plane —
+    // the very plane you will see from outside after zooming away
+    const n = sd.hasGalaxy ? orientationOf(sd.galaxyChain)
+      : new THREE.Vector3(Math.sin(Math.acos(2*rng()-1))*Math.cos(rng()*Math.PI*2), 0.5, 0.5).normalize();
+    const u = new THREE.Vector3(0,1,0).cross(n);
+    if(u.lengthSq() < 1e-4) u.set(1,0,0); else u.normalize();
+    const v = new THREE.Vector3().crossVectors(n, u);
+    const tint = sd.tint.map(c => c + (1-c)*0.6);
+    const PR = renderer.getPixelRatio(); // screen-pixel sizes must scale with DPR
+
+    // two layers: a dense field of faint unresolved stars carries the
+    // fullness of a night sky; a few hundred resolved bright stars
+    // carry its sharpness
+    const dirOf = bandBias => {
+      if(sd.hasGalaxy && rng() < bandBias){
+        const a = rng()*Math.PI*2;
+        const lat = gauss() * 0.13;
+        return new THREE.Vector3()
+          .addScaledVector(u, Math.cos(lat)*Math.cos(a))
+          .addScaledVector(v, Math.cos(lat)*Math.sin(a))
+          .addScaledVector(n, Math.sin(lat));
+      }
+      const t = rng()*Math.PI*2, p = Math.acos(2*rng()-1);
+      return new THREE.Vector3(Math.sin(p)*Math.cos(t), Math.cos(p), Math.sin(p)*Math.sin(t));
+    };
+    const starLayer = (N, bandBias, bright, size, opacity) => {
+      const pos = new Float32Array(N*3), col = new Float32Array(N*3);
+      for(let i = 0; i < N; i++){
+        const dir = dirOf(bandBias);
+        pos[i*3] = dir.x*R; pos[i*3+1] = dir.y*R; pos[i*3+2] = dir.z*R;
+        const b = bright(rng);
+        const t = rng();
+        col[i*3]   = b * (0.86 + t*0.14);
+        col[i*3+1] = b * (0.88 + t*0.08);
+        col[i*3+2] = b * (0.92 + (1-t)*0.08);
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+      g.setAttribute("color", new THREE.BufferAttribute(col, 3));
+      sky.group.add(new THREE.Points(g, new THREE.PointsMaterial({ map: pointTexture(),
+        size: size, sizeAttenuation: false, vertexColors: true,
+        transparent: true, opacity: opacity, depthWrite: false })));
+    };
+    const NF = sd.hasGalaxy ? Math.min(60000, Math.round(12000 * Math.pow(detail, 0.78))) : 1400;
+    starLayer(NF, 0.62, r => 0.10 + 0.90 * Math.pow(r(), 2.4), 1.15 * PR, 0.8);
+    const NB = sd.hasGalaxy ? Math.round(280 * Math.sqrt(detail)) : 70;
+    starLayer(NB, 0.5, r => 0.4 + 0.6 * Math.pow(r(), 1.4), 2.3 * PR, 0.95);
+
+    if(sd.hasGalaxy){
+      // the soft glow of the band itself
+      for(let i = 0; i < 14; i++){
+        const a = (i/14)*Math.PI*2 + rng()*0.3;
+        const sp = glowSprite(tint, 55 + rng()*35);
+        sp.material.opacity = 0.055 + rng()*0.03;
+        sp.position.set(0,0,0)
+          .addScaledVector(u, Math.cos(a))
+          .addScaledVector(v, Math.sin(a))
+          .addScaledVector(n, gauss()*0.05)
+          .multiplyScalar(R*0.98);
+        sky.group.add(sp);
+      }
+    }
+    // neighbouring galaxies: barely-there smudges in the night
+    for(const nb of sd.neighbors.slice(0, 4)){
+      const r2 = SE.mulberry32(SE.chain(nb.chain, 0x5C1F));
+      const t = r2()*Math.PI*2, p = Math.acos(2*r2()-1);
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: smudgeTexture(desat(nb.colorCss, 0.75)),
+        blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }));
+      sp.material.rotation = r2() * Math.PI;
+      sp.material.opacity = 0.10 + r2()*0.10;
+      const asp = 0.4 + r2()*0.5; // inclination impression at a glance
+      sp.scale.set(6 + r2()*9, (6 + r2()*9) * asp, 1);
+      sp.position.set(Math.sin(p)*Math.cos(t), Math.cos(p), Math.sin(p)*Math.sin(t)).multiplyScalar(R*0.97);
+      sky.group.add(sp);
+    }
+    sky.group.traverse(o => {
+      if(o.material){ o.material.transparent = true;
+        sky.mats.push({ m: o.material, base: o.material.opacity }); }
+    });
+    scene.add(sky.group);
+  }
+  // the inside view dissolves as you leave the galaxy
+  function skyFade(z){
+    return Math.max(0, Math.min(1, 1 - (z - 1.2) / 0.6));
+  }
+
+  /* --- procedural textures (visuals only; identity lives in params) --- */
+  function makeNoise(rng, size){
+    const g = new Float32Array(size*size);
+    for(let i = 0; i < g.length; i++) g[i] = rng();
+    const at = (x,y) => g[((y%size+size)%size)*size + ((x%size+size)%size)];
+    function sample(u, v){
+      const x = u*size, y = v*size;
+      const x0 = Math.floor(x), y0 = Math.floor(y);
+      const fx = x-x0, fy = y-y0;
+      const sx = fx*fx*(3-2*fx), sy = fy*fy*(3-2*fy);
+      const a = at(x0,y0), b = at(x0+1,y0), c = at(x0,y0+1), d = at(x0+1,y0+1);
+      return a + (b-a)*sx + (c-a)*sy + (a-b-c+d)*sx*sy;
+    }
+    return function fbm(u, v, oct){
+      let s = 0, amp = 0.5, f = 1;
+      for(let o = 0; o < oct; o++){ s += amp*sample(u*f, v*f); amp *= 0.5; f *= 2; }
+      return s;
+    };
+  }
+  const css = c => "rgb(" + Math.round(c[0]*255) + "," + Math.round(c[1]*255) + "," + Math.round(c[2]*255) + ")";
+  const mix = (a,b,t) => [a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t, a[2]+(b[2]-a[2])*t];
+
+  function planetTexture(p, texSeed){
+    // still buys resolution: the disc can fill the screen at
+    // pixelRatio 3 without going soft
+    const W = detail >= 8 ? 1536 : 512, H = W >> 1;
+    const cv = document.createElement("canvas"); cv.width = W; cv.height = H;
+    const ctx = cv.getContext("2d");
+    const img = ctx.createImageData(W, H);
+    const rng = SE.mulberry32(texSeed);
+    const fbm = makeNoise(rng, 64);
+    const fbm2 = makeNoise(rng, 64);
+    for(let y = 0; y < H; y++){
+      const v = y/H, lat = Math.abs(v - 0.5)*2;
+      for(let x = 0; x < W; x++){
+        const u = x/W;
+        // wrap horizontally by sampling on a cylinder-ish pair
+        const n = 0.5*(fbm(u, v*0.5, 4) + fbm(1-u, 0.5 + v*0.5, 4));
+        let c;
+        if(p.archetype === "gas"){
+          const turb = (fbm2(u*0.7, v, 4) - 0.5) * 0.35;
+          const t = 0.5 + 0.5*Math.sin((v + turb) * Math.PI * 2 * p.bands);
+          c = mix(p.base, p.band, t);
+          c = mix(c, p.alt, 0.25 + 0.5*(fbm(u*2, v*2, 3) - 0.3));
+        }else if(p.archetype === "ice"){
+          c = mix(p.base, p.alt, fbm(u*p.noiseScale*0.4, v*p.noiseScale*0.4, 4));
+          const t = 0.5 + 0.5*Math.sin(v * Math.PI * 6 + n*3);
+          c = mix(c, p.pole, t*0.15);
+        }else{
+          const m = fbm(u*p.noiseScale*0.5, v*p.noiseScale*0.5, 5);
+          c = mix(p.base, p.alt, Math.min(1, Math.max(0, (m - 0.32) * 2.4)));
+          c = mix(c, p.band, Math.max(0, (fbm2(u*3, v*3, 3) - 0.62)) * 1.4);
+        }
+        if(p.poleCap && lat > p.poleCap){
+          c = mix(c, p.pole, Math.min(1, (lat - p.poleCap) / (1 - p.poleCap) * 1.6));
+        }
+        const i = (y*W + x)*4;
+        img.data[i] = c[0]*255; img.data[i+1] = c[1]*255; img.data[i+2] = c[2]*255; img.data[i+3] = 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    const tex = new THREE.CanvasTexture(cv);
+    tex.wrapS = THREE.RepeatWrapping;
+    return tex;
+  }
+
+  // grayscale height map re-deriving the same first-noise field the
+  // albedo used (same texSeed -> same grid), so bumps match the colors
+  function heightTexture(p, texSeed){
+    const W = detail >= 8 ? 512 : 256, H = W >> 1;
+    const cv = document.createElement("canvas"); cv.width = W; cv.height = H;
+    const ctx = cv.getContext("2d");
+    const img = ctx.createImageData(W, H);
+    const rng = SE.mulberry32(texSeed);
+    const fbm = makeNoise(rng, 64);
+    for(let y = 0; y < H; y++){
+      const v = y/H;
+      for(let x = 0; x < W; x++){
+        const u = x/W;
+        const m = fbm(u*p.noiseScale*0.5, v*p.noiseScale*0.5, 5);
+        const g = Math.min(255, Math.max(0, m*255));
+        const i = (y*W + x)*4;
+        img.data[i] = img.data[i+1] = img.data[i+2] = g; img.data[i+3] = 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    return new THREE.CanvasTexture(cv);
+  }
+
+  function ringTexture(ring){
+    const W = detail >= 8 ? 1024 : 256;
+    const cv = document.createElement("canvas"); cv.width = W; cv.height = 2;
+    const ctx = cv.getContext("2d");
+    const rng = SE.mulberry32(ring.seed);
+    for(let x = 0; x < W; x++){
+      const t = x / W;
+      let a = Math.sin(t*Math.PI) * ring.alpha;
+      a *= 0.55 + 0.45*Math.sin(t*40 + rng()*0.2) * (0.4 + rng()*0.6);
+      a = Math.max(0, a);
+      ctx.fillStyle = css(ring.tint);
+      ctx.globalAlpha = a;
+      ctx.fillRect(x, 0, 1, 2);
+    }
+    return new THREE.CanvasTexture(cv);
+  }
+
+  function glowSprite(color, size){
+    const cv = document.createElement("canvas"); cv.width = cv.height = 128;
+    const ctx = cv.getContext("2d");
+    const g = ctx.createRadialGradient(64,64,0,64,64,64);
+    g.addColorStop(0, "rgba(" + Math.round(color[0]*255) + "," + Math.round(color[1]*255) + "," + Math.round(color[2]*255) + ",0.35)");
+    g.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = g; ctx.fillRect(0,0,128,128);
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: new THREE.CanvasTexture(cv), blending: THREE.AdditiveBlending,
+      depthWrite: false, transparent: true }));
+    sp.scale.set(size, size, 1);
+    return sp;
+  }
+
+  const fresnelMat = (color, intensity) => new THREE.ShaderMaterial({
+    uniforms: { c: { value: new THREE.Color(color[0], color[1], color[2]) }, k: { value: intensity } },
+    vertexShader: `
+      varying float vF;
+      void main(){
+        vec3 n = normalize(normalMatrix * normal);
+        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        vF = pow(1.0 - abs(dot(n, normalize(-mv.xyz))), 3.0);
+        gl_Position = projectionMatrix * mv;
+      }`,
+    fragmentShader: `
+      uniform vec3 c; uniform float k; varying float vF;
+      void main(){ gl_FragColor = vec4(c, vF * k); }`,
+    transparent: true, blending: THREE.AdditiveBlending,
+    side: THREE.BackSide, depthWrite: false
+  });
+
+  /* --- scale stages (Phase 3) --- */
+  // Continuous log zoom Z over 5 display stages:
+  //   0 planet · 1 system · 2 galaxy · 3 cluster · 4 web
+  // Each stage lives in its own unit-sized local frame with the
+  // focus-path child anchored at the world origin. Every frame each
+  // stage group is scaled by K^(j - Z) and faded by its distance to
+  // Z, so crossing scales is a continuous composition of coordinate
+  // frames, never a scene swap. The camera never moves in depth.
+  // Per-stage size ratios (stage j -> j+1). Compressed from reality
+  // (planet:system ~1e3-1e4, system:galaxy ~1e7, galaxy:cluster
+  // ~1e1-1e2, cluster:web ~1e2-1e3) but keeping its direction:
+  // worlds are lost inside their systems, systems are lost inside
+  // their galaxy, while galaxies hang comparatively near each other.
+  // Z still moves one stage per unit; each unit just spans a
+  // different ratio, so the gesture stays even-paced.
+  const KJ = [400, 1500, 18, 45];
+  const LK = KJ.map(Math.log);
+  const LSUM = [0, LK[0], LK[0]+LK[1], LK[0]+LK[1]+LK[2], LK[0]+LK[1]+LK[2]+LK[3]];
+  function logScaleAt(z){
+    const j = Math.max(0, Math.min(3, Math.floor(z)));
+    return LSUM[j] + (z - j) * LK[j];
+  }
+  let Z = 0, zTarget = 0, zMin = -0.7, zMax = 4.35;
+  // detail multiplier: std 1 / high 2 / xhigh 4 / still 8 — display
+  // density only, identity is never affected
+  let detail = 1;
+  function setDetail(m){ detail = m; }
+  function setPixelCap(c){
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, c));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  }
+  let stages = [];       // per stage: {group, mats, spin, moonPivots, pulse, focusProxy, fade}
+  let pickables = [];
+  let onPick = null, onZoom = null;
+  function setPickHandler(fn){ onPick = fn; }
+  function setZoomHandler(fn){ onZoom = fn; }
+  function getZ(){ return zTarget; }
+  // zoom eases toward its target: gestures feel like moving a mass,
+  // not flipping a switch
+  function setZ(z, immediate){
+    zTarget = Math.max(zMin, Math.min(zMax, z));
+    if(immediate) Z = zTarget;
+    if(onZoom) onZoom(Z);
+  }
+
+  // perf watch: measures average frame time shortly after a detail
+  // switch so the ui can step back down before the device suffers
+  let perfWatch = null;
+  function watchPerf(cb){ perfWatch = { skip: 25, n: 0, sum: 0, cb }; }
+  // context-loss safety net: whatever still asks of the gpu, the
+  // worst landing is a rebuild at standard detail
+  let onCtxRestored = null;
+  function setContextHandler(fn){ onCtxRestored = fn; }
+
+  // --- light design: every point of light is a sharp 2-3px core
+  // with an extremely faint wide halo. Sharp cores carry crispness;
+  // vast quiet space carries scale. Colors stay near-achromatic in a
+  // narrow ivory-to-pale-blue temperature range.
+  const parseRgb = css => {
+    const m = /rgb\((\d+),\s*(\d+),\s*(\d+)\)/.exec(css);
+    return m ? [ +m[1], +m[2], +m[3] ] : [255, 255, 255];
+  };
+  // desaturate toward white at display time only — identity params
+  // (and therefore fingerprints) are untouched
+  const desat = (css, t) => {
+    const [r, g, b] = parseRgb(css);
+    return "rgb(" + Math.round(r + (255-r)*t) + "," + Math.round(g + (255-g)*t) + "," + Math.round(b + (255-b)*t) + ")";
+  };
+  const withA = (css, a) => css.replace("rgb(", "rgba(").replace(")", "," + a + ")");
+
+  // every point is a soft round dot — raw square points are banned
+  let _pointTex = null;
+  function pointTexture(){
+    if(_pointTex) return _pointTex;
+    const cv = document.createElement("canvas"); cv.width = cv.height = 32;
+    const ctx = cv.getContext("2d");
+    const g = ctx.createRadialGradient(16,16,0,16,16,16);
+    g.addColorStop(0, "rgba(255,255,255,1)");
+    g.addColorStop(0.4, "rgba(255,255,255,0.55)");
+    g.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = g; ctx.fillRect(0,0,32,32);
+    _pointTex = new THREE.CanvasTexture(cv);
+    return _pointTex;
+  }
+
+  const markerMatCache = new Map();
+  function markerMaterial(colorCss){
+    if(markerMatCache.has(colorCss)) return markerMatCache.get(colorCss);
+    const cv = document.createElement("canvas"); cv.width = cv.height = 64;
+    const ctx = cv.getContext("2d");
+    // faint halo
+    let g = ctx.createRadialGradient(32,32,0,32,32,32);
+    g.addColorStop(0, withA(colorCss, 0.14));
+    g.addColorStop(0.35, withA(colorCss, 0.05));
+    g.addColorStop(1, withA(colorCss, 0));
+    ctx.fillStyle = g; ctx.fillRect(0,0,64,64);
+    // sharp core
+    g = ctx.createRadialGradient(32,32,0,32,32,7);
+    g.addColorStop(0, withA(colorCss, 1));
+    g.addColorStop(0.5, withA(colorCss, 0.85));
+    g.addColorStop(1, withA(colorCss, 0));
+    ctx.fillStyle = g; ctx.fillRect(0,0,64,64);
+    const m = new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv),
+      blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });
+    markerMatCache.set(colorCss, m);
+    return m;
+  }
+
+  // --- shared derivations (Phase 5: parent/child consistency) ---
+  // Any visual trait shown at two scales must come from ONE derivation.
+  // A galaxy's 3D orientation drives its exterior plane, its interior
+  // disc, and the milky band seen from a planet inside it. A system's
+  // star color drives both its point in the galaxy and its sun.
+  function orientationOf(chainH){
+    const r = SE.mulberry32(SE.chain(chainH, 0x0413));
+    const th = r()*Math.PI*2, ph = Math.acos(2*r()-1);
+    return new THREE.Vector3(Math.sin(ph)*Math.cos(th), Math.cos(ph), Math.sin(ph)*Math.sin(th));
+  }
+  function starColorOf(chainH){
+    const r = SE.mulberry32(SE.chain(chainH, 0x57a2));
+    return [1, 0.85 + r()*0.15, 0.65 + r()*0.3];
+  }
+  const cssOf = c => "rgb(" + Math.round(c[0]*255) + "," + Math.round(c[1]*255) + "," + Math.round(c[2]*255) + ")";
+
+  // a galaxy seen from outside: a circular smudge on a 3D plane
+  // tilted by the galaxy's own orientation — the same tilt its
+  // interior disc has, so diving in never flips the world
+  const smudgeTexCache = new Map();
+  function smudgeTexture(tintCss){
+    if(smudgeTexCache.has(tintCss)) return smudgeTexCache.get(tintCss);
+    const cv = document.createElement("canvas"); cv.width = cv.height = 96;
+    const ctx = cv.getContext("2d");
+    let g = ctx.createRadialGradient(48,48,0,48,48,46);
+    g.addColorStop(0, withA(tintCss, 0.5));
+    g.addColorStop(0.16, withA(tintCss, 0.24));
+    g.addColorStop(0.5, withA(tintCss, 0.06));
+    g.addColorStop(1, withA(tintCss, 0));
+    ctx.fillStyle = g; ctx.fillRect(0,0,96,96);
+    g = ctx.createRadialGradient(48,48,0,48,48,5);
+    g.addColorStop(0, withA(tintCss, 0.95));
+    g.addColorStop(1, withA(tintCss, 0));
+    ctx.fillStyle = g; ctx.fillRect(0,0,96,96);
+    const tex = new THREE.CanvasTexture(cv);
+    smudgeTexCache.set(tintCss, tex);
+    return tex;
+  }
+  function galaxyPlane(tintCss, chainH){
+    const mesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(1, 1),
+      new THREE.MeshBasicMaterial({ map: smudgeTexture(tintCss),
+        transparent: true, depthWrite: false, side: THREE.DoubleSide,
+        blending: THREE.AdditiveBlending }));
+    // plane normal +Z -> galaxy orientation
+    mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,1), orientationOf(chainH));
+    return mesh;
+  }
+
+  // near-achromatic feature palette: kinds differ by brightness and
+  // form, not by hue — slightly warm nodes, slightly cool filaments
+  const WEB_COLOR = { node:"rgb(255,241,219)", filament:"rgb(216,229,247)",
+                      wall:"rgb(182,192,212)", void:"rgb(118,128,152)" };
+  const WEB_SIZE  = { node:0.075, filament:0.05, wall:0.04, void:0.034 };
+  const WEB_ALPHA = { node:0.95, filament:0.55, wall:0.32, void:0.2 };
+
+  function disposeGroup(g){
+    g.traverse(o => {
+      if(o.geometry) o.geometry.dispose();
+      if(o.material){
+        const ms = Array.isArray(o.material) ? o.material : [o.material];
+        ms.forEach(m => { if(m.map) m.map.dispose(); m.dispose(); });
+      }
+    });
+  }
+  function newStage(){
+    return { group: new THREE.Group(), mats: [], pointMats: [], moonPivots: [],
+             spin: null, pulse: null, focusProxy: null, fade: 1 };
+  }
+  function collectMats(st){
+    st.group.traverse(o => {
+      if(o.material && !Array.isArray(o.material)){
+        o.material.transparent = true;
+        st.mats.push({ m: o.material, base: o.material.opacity === undefined ? 1 : o.material.opacity });
+        // aggregate point clouds get the point-discipline treatment
+        // in updateStageTransforms (size cap + dissolve when entered);
+        // scenery clouds are distant objects and scale like bodies
+        if(o.isPoints && o.material.sizeAttenuation){
+          st.pointMats.push({ m: o.material, base: o.material.size,
+                              scenery: !!o.material.userData.scenery });
+        }
+      }
+    });
+  }
+  function addPickable(st, j, obj, pick){
+    obj.userData.pick = pick;
+    obj.userData.stage = j;
+    pickables.push(obj);
+  }
+  // deterministic per-candidate scatter, anchored so the focused
+  // child sits exactly at the local origin
+  function anchorOffset(children, focusedAddrStr, posFn){
+    const f = children.find(c => c.addrStr === focusedAddrStr);
+    return f ? posFn(f) : new THREE.Vector3();
+  }
+
+  /* --- stage builders (data arrives pre-resolved from the ui layer) --- */
+  function buildPlanetStage(d){
+    const st = newStage();
+    const p = d.desc.params;
+    const texSeed = parseInt(d.desc.fingerprint, 16);
+    const axis = new THREE.Group();
+    axis.rotation.z = p.tilt;
+    const mat = new THREE.MeshStandardMaterial({
+      map: planetTexture(p, texSeed), roughness: 1, metalness: 0 });
+    if(p.archetype !== "gas"){
+      mat.bumpMap = heightTexture(p, texSeed);
+      mat.bumpScale = p.archetype === "rocky" ? 0.03 : 0.015;
+    }
+    const sphere = new THREE.Mesh(new THREE.SphereGeometry(p.radius, 48, 32), mat);
+    axis.add(sphere);
+    st.spin = { obj: sphere, rate: p.spin };
+    if(p.hasAtmo){
+      axis.add(new THREE.Mesh(new THREE.SphereGeometry(p.radius*1.045, 48, 32),
+        fresnelMat(p.atmo, p.archetype === "gas" ? 0.85 : 0.55)));
+    }
+    if(p.ring){
+      const inner = p.radius*p.ring.inner, outer = p.radius*p.ring.outer;
+      const g = new THREE.RingGeometry(inner, outer, 128, 1);
+      const posA = g.attributes.position, uvA = g.attributes.uv;
+      for(let i = 0; i < posA.count; i++){
+        const r = Math.hypot(posA.getX(i), posA.getY(i));
+        uvA.setXY(i, (r - inner)/(outer - inner), 0.5);
+      }
+      const ring = new THREE.Mesh(g, new THREE.MeshBasicMaterial({
+        map: ringTexture(p.ring), side: THREE.DoubleSide,
+        transparent: true, depthWrite: false }));
+      ring.rotation.x = Math.PI/2;
+      axis.add(ring);
+    }
+    p.moons.forEach((m, i) => {
+      const pivot = new THREE.Group();
+      pivot.rotation.x = m.incl;
+      const mesh = new THREE.Mesh(
+        new THREE.SphereGeometry(m.size, 20, 14),
+        new THREE.MeshStandardMaterial({ color: new THREE.Color(m.shade, m.shade, m.shade*1.04), roughness: 1 }));
+      mesh.position.x = p.radius * m.dist;
+      if(d.children && d.children[i]) addPickable(st, 0, mesh, d.children[i]);
+      pivot.add(mesh);
+      pivot.userData = { speed: m.speed };
+      pivot.rotation.y = m.phase;
+      st.group.add(pivot);
+      st.moonPivots.push(pivot);
+    });
+    st.group.add(axis);
+    return st;
+  }
+
+  // invisible generous hit areas so tiny points stay tappable
+  let _hitMat = null;
+  function hitMaterial(){
+    if(!_hitMat) _hitMat = new THREE.SpriteMaterial({ opacity: 0, transparent: true, depthWrite: false });
+    return _hitMat;
+  }
+
+  function buildSystemStage(d){
+    const st = newStage();
+    const pos = c => {
+      const rng = SE.mulberry32(SE.chain(c.chain, 0x0913));
+      const orbitR = 0.34 + Math.min(c.segIndex, 12) * 0.17 + rng() * 0.05;
+      const ang = rng() * Math.PI * 2;
+      return new THREE.Vector3(orbitR*Math.cos(ang), (rng()-0.5)*0.05*orbitR, orbitR*Math.sin(ang));
+    };
+    const off = anchorOffset(d.children, d.focusedAddrStr, pos);
+    // the star: a point of unbearable brightness, not a disc —
+    // its color is the same derivation the galaxy stage already shows
+    const starC = starColorOf(d.desc.chain);
+    const starCss = cssOf(starC);
+    const starPos = new THREE.Vector3().copy(off).negate();
+    const core = new THREE.Sprite(markerMaterial(starCss).clone());
+    core.scale.setScalar(0.06);
+    core.position.copy(starPos);
+    const halo = glowSprite(starC, 0.5);
+    halo.position.copy(starPos);
+    const halo2 = glowSprite(starC, 1.7);
+    halo2.material.opacity = 0.16;
+    halo2.position.copy(starPos);
+    st.group.add(core, halo, halo2);
+    // planets: near-invisible points of light in the dark, like
+    // evening stars — their disc belongs to the planet stage alone
+    for(const c of d.children){
+      const p = pos(c).sub(off);
+      const sp = new THREE.Sprite(markerMaterial(desat(c.colorCss, 0.3)).clone());
+      sp.scale.setScalar(0.013 + c.radius*0.005);
+      sp.position.copy(p);
+      st.group.add(sp);
+      const hit = new THREE.Sprite(hitMaterial());
+      hit.scale.setScalar(0.10);
+      hit.position.copy(p);
+      addPickable(st, 1, hit, c);
+      st.group.add(hit);
+      if(c.addrStr === d.focusedAddrStr) st.focusProxy = sp;
+    }
+    return st;
+  }
+
+  // interior stars of a galaxy, in its own local frame. The rng
+  // stream is consumed in a fixed order, so asking for N points
+  // yields exactly the first N of the full cloud: a distant galaxy
+  // is literally a subset of the same stars, resolved sparsely
+  function galaxyPointData(chainH, colorArr, N){
+    const rngB = SE.mulberry32(SE.chain(chainH, 0xB061));
+    const gauss = () => (rngB()+rngB()+rngB()+rngB()-2)/2;
+    const tint = colorArr.map(c => c + (1-c)*0.55);
+    const posA = new Float32Array(N*3), colA = new Float32Array(N*3);
+    const cool = [0.78, 0.85, 1.0], warm = [1.0, 0.92, 0.78];
+    for(let i = 0; i < N; i++){
+      const u = rngB();
+      let x, y, z, w, heat;
+      if(u < 0.24){ // bulge
+        const rr = Math.abs(gauss()) * 0.16;
+        const th = rngB()*Math.PI*2, ph = Math.acos(2*rngB()-1);
+        x = rr*Math.sin(ph)*Math.cos(th); z = rr*Math.sin(ph)*Math.sin(th);
+        y = rr*Math.cos(ph)*0.7;
+        w = 0.45 + rngB()*0.55; heat = 0.9;
+      }else if(u < 0.54){ // thin faint disc
+        const rr = Math.sqrt(rngB()) * 1.25;
+        const th = rngB()*Math.PI*2;
+        x = rr*Math.cos(th); z = rr*Math.sin(th);
+        y = gauss() * 0.045 * (1.3 - rr*0.6);
+        w = 0.10 + 0.30*Math.pow(rngB(), 2); heat = 0.35;
+      }else{ // arms
+        const t = Math.pow(rngB(), 0.75);
+        const rr = 0.14 + t * 1.1;
+        const arm = (i % 2) * Math.PI;
+        const th = arm + Math.log(rr/0.12) * 2.4 + gauss() * (0.16 + 0.5*(1-t));
+        const spread = 0.05 + 0.10*rr;
+        x = rr*Math.cos(th) + gauss()*spread;
+        z = rr*Math.sin(th) + gauss()*spread;
+        y = gauss() * 0.04 * (1.3 - rr*0.5);
+        w = 0.15 + 0.85*Math.pow(rngB(), 2.4); heat = rngB() < 0.15 ? 0.9 : 0.1;
+      }
+      posA[i*3] = x; posA[i*3+1] = y; posA[i*3+2] = z;
+      for(let k = 0; k < 3; k++){
+        const base = cool[k] + (warm[k]-cool[k]) * heat;
+        colA[i*3+k] = (base*0.65 + tint[k]*0.35) * w;
+      }
+    }
+    return { pos: posA, col: colA };
+  }
+
+  function buildGalaxyStage(d){
+    const st = newStage();
+    // the whole galaxy frame is tilted by the galaxy's own
+    // orientation — the same one its exterior plane uses
+    st.group.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), orientationOf(d.desc.chain));
+    const pos = c => {
+      const rng = SE.mulberry32(SE.chain(c.chain, 0x6a1a));
+      const rr = Math.sqrt(rng()) * 1.2, ang = rng() * Math.PI * 2;
+      return new THREE.Vector3(rr*Math.cos(ang), (rng()-0.5)*0.08, rr*Math.sin(ang));
+    };
+    const off = anchorOffset(d.children, d.focusedAddrStr, pos);
+    const data = galaxyPointData(d.desc.chain, d.desc.params.color, Math.round(2600 * detail));
+    for(let i = 0; i < data.pos.length; i += 3){
+      data.pos[i] -= off.x; data.pos[i+1] -= off.y; data.pos[i+2] -= off.z;
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(data.pos, 3));
+    g.setAttribute("color", new THREE.BufferAttribute(data.col, 3));
+    st.group.add(new THREE.Points(g, new THREE.PointsMaterial({ map: pointTexture(),
+      size: 0.0065, sizeAttenuation: true, vertexColors: true,
+      transparent: true, opacity: 0.9, depthWrite: false,
+      blending: THREE.AdditiveBlending })));
+    // still only: a dim spherical halo of old stars around the disc,
+    // and small tight star-cluster grains strung along the arms.
+    // Separate rng salt, so lower tiers keep their exact clouds.
+    if(detail >= 8){
+      const rngX = SE.mulberry32(SE.chain(d.desc.chain, 0xB062));
+      const gX = () => (rngX()+rngX()+rngX()+rngX()-2)/2;
+      const xPos = [], xCol = [];
+      for(let i = 0; i < 1400; i++){ // halo
+        const rr = 0.15 + Math.abs(gX()) * 0.8;
+        const th = rngX()*Math.PI*2, ph = Math.acos(2*rngX()-1);
+        xPos.push(rr*Math.sin(ph)*Math.cos(th) - off.x,
+                  rr*Math.cos(ph)*0.8 - off.y,
+                  rr*Math.sin(ph)*Math.sin(th) - off.z);
+        const w = 0.04 + 0.10*Math.pow(rngX(), 2);
+        xCol.push(w*0.85, w*0.9, w);
+      }
+      for(let c2 = 0; c2 < 26; c2++){ // star clusters on the arms
+        const t = Math.pow(rngX(), 0.7);
+        const rr = 0.2 + t * 1.0;
+        const arm = rngX() < 0.5 ? 0 : Math.PI;
+        const th = arm + Math.log(rr/0.12) * 2.4 + gX() * 0.15;
+        const cx = rr*Math.cos(th), cz = rr*Math.sin(th);
+        const cy = gX() * 0.03;
+        const hot = rngX() < 0.5;
+        for(let k = 0; k < 34; k++){
+          xPos.push(cx + gX()*0.022 - off.x, cy + gX()*0.014 - off.y, cz + gX()*0.022 - off.z);
+          const w = 0.25 + 0.6*Math.pow(rngX(), 2);
+          if(hot) xCol.push(w*0.82, w*0.9, w);
+          else    xCol.push(w, w*0.9, w*0.76);
+        }
+      }
+      const gx = new THREE.BufferGeometry();
+      gx.setAttribute("position", new THREE.BufferAttribute(new Float32Array(xPos), 3));
+      gx.setAttribute("color", new THREE.BufferAttribute(new Float32Array(xCol), 3));
+      st.group.add(new THREE.Points(gx, new THREE.PointsMaterial({ map: pointTexture(),
+        size: 0.005, sizeAttenuation: true, vertexColors: true,
+        transparent: true, opacity: 0.9, depthWrite: false,
+        blending: THREE.AdditiveBlending })));
+    }
+    for(const c of d.children){
+      // the point of light IS the star you will meet inside
+      const sp = new THREE.Sprite(markerMaterial(cssOf(starColorOf(c.chain))).clone());
+      sp.material.opacity = 0.8;
+      sp.position.copy(pos(c).sub(off));
+      sp.scale.setScalar(0.042);
+      st.group.add(sp);
+      const hit = new THREE.Sprite(hitMaterial());
+      hit.scale.setScalar(0.09);
+      hit.position.copy(sp.position);
+      addPickable(st, 2, hit, c);
+      st.group.add(hit);
+      if(c.addrStr === d.focusedAddrStr) st.focusProxy = sp;
+    }
+    return st;
+  }
+
+  function buildClusterStage(d){
+    const st = newStage();
+    const pos = c => {
+      const rng = SE.mulberry32(SE.chain(c.chain, 0xC1a5));
+      const v = () => (rng()+rng()+rng())/1.5 - 1;
+      return new THREE.Vector3(v()*0.9, v()*0.5, v()*0.9);
+    };
+    const off = anchorOffset(d.children, d.focusedAddrStr, pos);
+    // every galaxy is drawn in the same language as the focused one:
+    // a subset of its own stars (first N of the same rng stream),
+    // merged into one geometry. The smudge plane stays underneath,
+    // dimmed, as the unresolved light between the stars.
+    const NMINI = Math.round(170 * Math.sqrt(detail));
+    const mPos = [], mCol = [];
+    const q = new THREE.Quaternion(), vv = new THREE.Vector3();
+    const up = new THREE.Vector3(0,1,0);
+    for(const c of d.children){
+      const rng = SE.mulberry32(SE.chain(c.chain, 0xC1a6));
+      const op = 0.35 + 0.65 * Math.pow(rng(), 2);
+      const size = 0.20 + rng()*0.18;
+      const p0 = pos(c).sub(off);
+      const plane = galaxyPlane(desat(c.colorCss, 0.7), c.chain);
+      plane.scale.setScalar(size);
+      plane.material.opacity = op * 0.45;
+      plane.position.copy(p0);
+      st.group.add(plane);
+      const hit = new THREE.Sprite(hitMaterial());
+      hit.scale.setScalar(0.13);
+      hit.position.copy(p0);
+      addPickable(st, 3, hit, c);
+      st.group.add(hit);
+      if(c.addrStr === d.focusedAddrStr){
+        st.focusProxy = plane;
+        continue; // its stars live in the galaxy stage itself
+      }
+      // baked mini point cloud, oriented and scaled like its interior
+      const data = galaxyPointData(c.chain, parseRgb(c.colorCss).map(x => x/255), NMINI);
+      q.setFromUnitVectors(up, orientationOf(c.chain));
+      const s = size / 2.6;
+      const bright = 0.55 + 0.45 * op;
+      for(let i = 0; i < NMINI; i++){
+        vv.set(data.pos[i*3], data.pos[i*3+1], data.pos[i*3+2])
+          .applyQuaternion(q).multiplyScalar(s).add(p0);
+        mPos.push(vv.x, vv.y, vv.z);
+        mCol.push(data.col[i*3]*bright, data.col[i*3+1]*bright, data.col[i*3+2]*bright);
+      }
+    }
+    if(mPos.length){
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(mPos), 3));
+      g.setAttribute("color", new THREE.BufferAttribute(new Float32Array(mCol), 3));
+      const mat = new THREE.PointsMaterial({ map: pointTexture(),
+        size: 0.005, sizeAttenuation: true, vertexColors: true,
+        transparent: true, opacity: 0.95, depthWrite: false,
+        blending: THREE.AdditiveBlending });
+      // scenery, not an entered medium: these clumps are distant
+      // objects and must scale with their stage frame like any other
+      // body, never dissolve under the aggregate rule
+      mat.userData.scenery = true;
+      st.group.add(new THREE.Points(g, mat));
+    }
+    return st;
+  }
+
+  function buildWebStage(d){
+    const st = newStage();
+    // the structure is carried entirely by dust density: matter
+    // gathered on walls, filaments and nodes, dim in the voids —
+    // no lines, no diagram
+    if(d.dust && d.dust.pts.length){
+      const n = d.dust.pts.length / 3;
+      const pos = new Float32Array(d.dust.pts);
+      const col = new Float32Array(n * 3);
+      for(let i = 0; i < n; i++){
+        const w = d.dust.w[i];
+        const b = 0.08 + 0.92 * Math.pow(w, 1.6);
+        col[i*3]   = b * (0.82 + 0.18 * w);
+        col[i*3+1] = b * (0.86 + 0.10 * w);
+        col[i*3+2] = b;
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+      g.setAttribute("color", new THREE.BufferAttribute(col, 3));
+      st.group.add(new THREE.Points(g, new THREE.PointsMaterial({ map: pointTexture(),
+        size: 0.0075, sizeAttenuation: true, vertexColors: true,
+        transparent: true, opacity: 0.9, depthWrite: false,
+        blending: THREE.AdditiveBlending })));
+      // gas layer: a sparse subset of structure points drawn large
+      // and extremely faint — the thickness of the medium
+      const gasMax = Math.round(700 * detail);
+      const gPos = [], gCol = [];
+      for(let i = 0, taken = 0; i < n && taken < gasMax; i++){
+        if(d.dust.w[i] < 0.45 || i % 3 !== 0) continue;
+        taken++;
+        gPos.push(d.dust.pts[i*3], d.dust.pts[i*3+1], d.dust.pts[i*3+2]);
+        const w = d.dust.w[i];
+        gCol.push(0.75 + 0.25*w, 0.8 + 0.12*w, 0.92);
+      }
+      if(gPos.length){
+        const gg = new THREE.BufferGeometry();
+        gg.setAttribute("position", new THREE.BufferAttribute(new Float32Array(gPos), 3));
+        gg.setAttribute("color", new THREE.BufferAttribute(new Float32Array(gCol), 3));
+        st.group.add(new THREE.Points(gg, new THREE.PointsMaterial({ map: pointTexture(),
+          size: 0.13, sizeAttenuation: true, vertexColors: true,
+          transparent: true, opacity: 0.045, depthWrite: false,
+          blending: THREE.AdditiveBlending })));
+      }
+    }
+    // features at their true geometric positions
+    for(const c of d.children){
+      const sp = new THREE.Sprite(markerMaterial(WEB_COLOR[c.fkind]).clone());
+      sp.material.opacity = WEB_ALPHA[c.fkind];
+      sp.position.set(c.pos[0], c.pos[1], c.pos[2]);
+      sp.scale.setScalar(WEB_SIZE[c.fkind]);
+      addPickable(st, 4, sp, c);
+      st.group.add(sp);
+      if(c.addrStr === d.focusedAddrStr) st.focusProxy = sp;
+    }
+    return st;
+  }
+
+  const BUILDERS = [buildPlanetStage, buildSystemStage, buildGalaxyStage,
+                    buildClusterStage, buildWebStage];
+
+  function buildStages(data, z0){
+    for(const st of stages) if(st){ scene.remove(st.group); disposeGroup(st.group); }
+    stages = new Array(5).fill(null);
+    pickables = [];
+    let minStage = 4;
+    for(let j = 0; j < 5; j++){
+      if(!data[j]) continue;
+      minStage = Math.min(minStage, j);
+      const st = BUILDERS[j](data[j]);
+      collectMats(st);
+      scene.add(st.group);
+      stages[j] = st;
+    }
+    zMin = minStage === 0 ? -0.25 : minStage - 0.25;
+    // never above the medium: the dark beyond the dust must read
+    // as the limit of sight, not the edge of the universe
+    zMax = 4.05;
+    setZ(z0, true);
+    updateStageTransforms();
+  }
+
+  // Z -> per-stage scale and crossfade. The main scale owns the
+  // frame; neighbouring scales are context and stay at a whisper.
+  function stageFade(d){
+    let f;
+    if(d >= -0.25 && d <= 0.85) f = 1;
+    else if(d > 0.85) f = Math.max(0, 1 - (d - 0.85) / 0.85);
+    else f = Math.max(0, 1 + (d + 0.25) / 0.65);
+    if(d > 0.6) f *= 0.55 + 0.45 * Math.max(0, 1 - (d - 0.6) / 0.4);
+    return f;
+  }
+  function updateStageTransforms(){
+    if(sky){
+      const f = skyFade(Z);
+      sky.group.visible = f > 0.004;
+      if(sky.group.visible) for(const mm of sky.mats) mm.m.opacity = mm.base * f;
+    }
+    for(let j = 0; j < 5; j++){
+      const st = stages[j];
+      if(!st) continue;
+      const dRel = j - Z;
+      const s = Math.exp(LSUM[j] - logScaleAt(Z));
+      const fade = stageFade(dRel);
+      st.fade = fade;
+      st.group.visible = fade > 0.004;
+      if(!st.group.visible) continue;
+      st.group.scale.setScalar(s);
+      for(const mm of st.mats) mm.m.opacity = mm.base * fade;
+      // aggregate point clouds are statistical smudges, not objects:
+      // they never grow past their native size, and once the camera
+      // moves inside them (s >> 1) they dissolve into darkness and
+      // hand detail over to the finer stage
+      const aggF = s <= 1.5 ? 1 : Math.max(0, 1 - Math.log(s / 1.5) / Math.log(20));
+      for(const pm of st.pointMats){
+        if(pm.scenery){
+          // a distant object: scales with its frame, angular size
+          // invariant, never dissolves
+          pm.m.size = pm.base * s;
+        }else{
+          pm.m.size = pm.base * Math.min(s, 1);
+          pm.m.opacity *= aggF;
+        }
+      }
+      if(st.focusProxy){
+        // true crossfade: the proxy's opacity is exactly the
+        // complement of its detail stage's fade, so the focused
+        // object never doubles and never pops — one representation
+        // hands the light to the other
+        const det = stages[j-1];
+        const pv = det ? Math.max(0, Math.min(1, 1 - stageFade((j-1) - Z))) : 1;
+        st.focusProxy.material.opacity *= pv;
+        // apparent-size cap: while its stage frame is blown up by
+        // the zoom, the proxy stays a small distant light instead of
+        // a screen-filling glow; it returns to its native marker
+        // size as its own scale arrives (s -> 1)
+        const ud = st.focusProxy.userData;
+        if(ud.baseScale === undefined) ud.baseScale = st.focusProxy.scale.x;
+        st.focusProxy.scale.setScalar(Math.min(ud.baseScale, 0.26 / s));
+      }
+    }
+  }
+
+  /* --- camera & controls --- */
+  const orbit = { theta: 0.6, phi: 1.25, dist: 3.6 };
+  function applyCamera(){
+    orbit.phi = Math.max(0.15, Math.min(Math.PI - 0.15, orbit.phi));
+    const s = Math.sin(orbit.phi);
+    camera.position.set(
+      orbit.dist * s * Math.cos(orbit.theta),
+      orbit.dist * Math.cos(orbit.phi),
+      orbit.dist * s * Math.sin(orbit.theta));
+    camera.lookAt(0, 0, 0);
+  }
+  applyCamera();
+
+  const pointers = new Map();
+  let pinchD0 = 0, pinchZ0 = 0;
+  let tap = null;
+  // rotation inertia: releasing a drag lets the sky keep turning,
+  // slowing like a heavy globe
+  let vTheta = 0, vPhi = 0, lastMoveT = 0;
+  const raycaster = new THREE.Raycaster();
+  const cnv = renderer.domElement;
+
+  cnv.addEventListener("webglcontextlost", e => { e.preventDefault(); });
+  cnv.addEventListener("webglcontextrestored", () => { if(onCtxRestored) onCtxRestored(); });
+
+  function tryPick(x, y){
+    if(!onPick || !pickables.length) return;
+    const ndc = new THREE.Vector2(
+      (x / window.innerWidth) * 2 - 1,
+      -(y / window.innerHeight) * 2 + 1);
+    raycaster.setFromCamera(ndc, camera);
+    const visible = pickables.filter(o => {
+      const st = stages[o.userData.stage];
+      return st && st.fade > 0.3 && st.group.visible;
+    });
+    const hits = raycaster.intersectObjects(visible, false);
+    if(hits.length) onPick(hits[0].object.userData.pick);
+  }
+
+  cnv.addEventListener("pointerdown", e => {
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    vTheta = 0; vPhi = 0; lastMoveT = performance.now();
+    if(pointers.size === 1){
+      tap = { x: e.clientX, y: e.clientY, t: performance.now(), moved: false };
+    }else{
+      if(tap) tap.moved = true;
+      const [a, b] = [...pointers.values()];
+      pinchD0 = Math.hypot(a.x - b.x, a.y - b.y);
+      pinchZ0 = zTarget;
+    }
+    cnv.setPointerCapture(e.pointerId);
+  });
+  cnv.addEventListener("pointermove", e => {
+    if(!pointers.has(e.pointerId)) return;
+    const prev = pointers.get(e.pointerId);
+    if(tap && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) > 8) tap.moved = true;
+    if(pointers.size === 1){
+      const dTh = (e.clientX - prev.x) * 0.005;
+      const dPh = (e.clientY - prev.y) * 0.005;
+      orbit.theta += dTh;
+      orbit.phi   -= dPh;
+      const now = performance.now();
+      const dtm = Math.max(8, now - lastMoveT) / 1000;
+      lastMoveT = now;
+      vTheta = vTheta * 0.65 + (dTh / dtm) * 0.35;
+      vPhi   = vPhi   * 0.65 + (dPh / dtm) * 0.35;
+      applyCamera();
+    }
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if(pointers.size === 2 && pinchD0 > 0){
+      const [a, b] = [...pointers.values()];
+      const dNow = Math.hypot(a.x - b.x, a.y - b.y);
+      // pinch out (fingers apart) zooms in: Z decreases
+      setZ(pinchZ0 + Math.log(pinchD0 / Math.max(20, dNow)) / Math.log(2.0));
+    }
+  });
+  const release = e => {
+    if(pointers.size === 1 && tap && !tap.moved && performance.now() - tap.t < 400){
+      tryPick(e.clientX, e.clientY);
+    }
+    pointers.delete(e.pointerId);
+    pinchD0 = 0;
+    if(pointers.size === 0) tap = null;
+  };
+  cnv.addEventListener("pointerup", release);
+  cnv.addEventListener("pointercancel", e => { pointers.delete(e.pointerId); pinchD0 = 0; tap = null; });
+  cnv.addEventListener("wheel", e => {
+    e.preventDefault();
+    setZ(zTarget + e.deltaY * 0.0016);
+  }, { passive: false });
+  window.addEventListener("keydown", e => {
+    const step = 0.08;
+    if(e.key === "ArrowLeft") orbit.theta -= step;
+    else if(e.key === "ArrowRight") orbit.theta += step;
+    else if(e.key === "ArrowUp") orbit.phi -= step;
+    else if(e.key === "ArrowDown") orbit.phi += step;
+    else if(e.key === "+" || e.key === "=") { setZ(zTarget - 0.12); return; }
+    else if(e.key === "-") { setZ(zTarget + 0.12); return; }
+    else return;
+    applyCamera();
+  });
+
+  window.addEventListener("resize", () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const clock = new THREE.Clock();
+  function tick(){
+    requestAnimationFrame(tick);
+    const dt = Math.min(clock.getDelta(), 0.1);
+    // zoom easing toward its target
+    if(Math.abs(zTarget - Z) > 0.0004){
+      Z += (zTarget - Z) * Math.min(1, dt * (reduced ? 30 : 7));
+      if(Math.abs(zTarget - Z) <= 0.0004) Z = zTarget;
+      if(onZoom) onZoom(Z);
+    }
+    // rotation inertia after release
+    if(!reduced && pointers.size === 0 && (Math.abs(vTheta) + Math.abs(vPhi)) > 0.002){
+      orbit.theta += vTheta * dt;
+      orbit.phi   -= vPhi * dt;
+      const damp = Math.exp(-dt * 3.2);
+      vTheta *= damp; vPhi *= damp;
+      applyCamera();
+    }
+    if(!reduced){
+      const st0 = stages[0];
+      if(st0){
+        if(st0.spin) st0.spin.obj.rotation.y += st0.spin.rate * dt * 6;
+        for(const pv of st0.moonPivots) pv.rotation.y += pv.userData.speed * dt * 4;
+      }
+    }
+    updateStageTransforms();
+    renderer.render(scene, camera);
+    if(perfWatch){
+      if(perfWatch.skip > 0) perfWatch.skip--;
+      else{
+        perfWatch.sum += dt; perfWatch.n++;
+        if(perfWatch.n >= 90){
+          const cb = perfWatch.cb, avg = perfWatch.sum / perfWatch.n * 1000;
+          perfWatch = null;
+          cb(avg);
+        }
+      }
+    }
+  }
+  tick();
+
+  // one-frame high-resolution capture. The buffer is rendered once
+  // at up to 4x pixel ratio (bounded to ~4096px on the long side),
+  // read out as a PNG data url, then everything is restored.
+  // Screen-pixel-sized points (the sky) are compensated so the
+  // capture matches what the eye sees, only sharper.
+  function capture(){
+    try{
+      const w = window.innerWidth, h = window.innerHeight;
+      const prev = renderer.getPixelRatio();
+      const pr = Math.max(prev, Math.min(4, 4096 / Math.max(w, h)));
+      const comp = [];
+      scene.traverse(o => {
+        if(o.isPoints && !o.material.sizeAttenuation){
+          comp.push({ m: o.material, size: o.material.size });
+          o.material.size *= pr / prev;
+        }
+      });
+      renderer.setPixelRatio(pr);
+      renderer.setSize(w, h);
+      renderer.render(scene, camera);
+      const url = renderer.domElement.toDataURL("image/png");
+      for(const c of comp) c.m.size = c.size;
+      renderer.setPixelRatio(prev);
+      renderer.setSize(w, h);
+      renderer.render(scene, camera);
+      return url;
+    }catch(e){
+      return null;
+    }
+  }
+
+  return { buildStages, buildSky, setPickHandler, setZoomHandler, setZ, getZ,
+           setDetail, setPixelCap, watchPerf, setContextHandler, capture };
+})();
+
+/* ==================== ui ==================== */
+(function(){
+  const $ = id => document.getElementById(id);
+  const seedVal = $("seedVal"), scaleVal = $("scaleVal"), zVal = $("zVal"),
+        btnDetail = $("btnDetail"), btnShot = $("btnShot"),
+        btnStill = $("btnStill"), stillPanel = $("stillPanel"),
+        stillGo = $("stillGo"), stillCancel = $("stillCancel"),
+        veilMsg = $("veilMsg"),
+        addrText = $("addrText"), fpText = $("fpText"), verifyMsg = $("verifyMsg"),
+        btnMark = $("btnMark"), btnBack = $("btnBack"), btnUp = $("btnUp"),
+        btnJump = $("btnJump"), btnVerify = $("btnVerify"),
+        jumpPanel = $("jumpPanel"), jumpInput = $("jumpInput"),
+        jumpGo = $("jumpGo"), jumpCancel = $("jumpCancel"), jumpMsg = $("jumpMsg"),
+        nbTrigger = $("nbTrigger"), nbDots = $("nbDots"), nbCount = $("nbCount"),
+        nbPanel = $("nbPanel"), nbList = $("nbList"), nbEmpty = $("nbEmpty"),
+        nbCopyAll = $("nbCopyAll"), nbPaste = $("nbPaste"), nbClose = $("nbClose"),
+        pastePanel = $("pastePanel"), pasteArea = $("pasteArea"),
+        pasteImport = $("pasteImport"), pasteCancel = $("pasteCancel"), pasteMsg = $("pasteMsg"),
+        toast = $("toast"), veil = $("veil");
+
+  let toastTimer = null;
+  function showToast(msg){
+    toast.textContent = msg;
+    toast.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove("show"), 1500);
+  }
+  function copyText(text, doneMsg){
+    const fallback = () => {
+      const ta = document.createElement("textarea");
+      ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta); ta.focus(); ta.select();
+      let ok = false;
+      try{ ok = document.execCommand("copy"); }catch(e){}
+      document.body.removeChild(ta);
+      showToast(ok ? doneMsg : "Copy failed");
+    };
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(() => showToast(doneMsg), fallback);
+    }else fallback();
+  }
+
+  function descColorCss(desc){
+    const c = desc.bodyType === "planet" ? desc.params.base : desc.params.color;
+    return "rgb(" + Math.round(c[0]*255) + "," + Math.round(c[1]*255) + "," + Math.round(c[2]*255) + ")";
+  }
+  const codeOf = (kind, fp) => kind + "-" + fp.slice(0, 4).toUpperCase();
+
+  function closePanels(){
+    jumpPanel.classList.remove("open");
+    nbPanel.classList.remove("open");
+    pastePanel.classList.remove("open");
+    stillPanel.classList.remove("open");
+  }
+
+  /* --- zoom scale path (Phase 3) --- */
+  const STAGE_OF_KIND = SE.STAGE_OF_KIND;
+
+  /* --- detail quality (display density only, never identity) --- */
+  // std / high / xhigh cycle on the DETAIL row. still sits apart
+  // behind its own button + confirmation: a deliberate choice, never
+  // an accident. (Current still is provisional — Phase 7 gives it
+  // its real art.)
+  const QUALITIES = [
+    { key: "std",   mult: 1, px: 2 },
+    { key: "high",  mult: 2, px: 2 },
+    { key: "xhigh", mult: 4, px: 2 },
+    { key: "still", mult: 8, px: 3 }
+  ];
+  let qualityIdx = window.matchMedia && window.matchMedia("(pointer: coarse)").matches ? 0 : 1;
+  let qualityMult = QUALITIES[qualityIdx].mult;
+
+  function candInfo(a, anchorCell){
+    const d = SE.resolve(a);
+    const last = a.segs.length ? a.segs[a.segs.length-1] : null;
+    const info = { addrStr: SE.serializeAddress(a), chain: d.chain,
+                   colorCss: descColorCss(d), code: codeOf(d.kind, d.fingerprint),
+                   segIndex: 0, radius: 1, fkind: null, cellDelta: [0,0,0] };
+    if(last){
+      if(last.k === "W"){
+        info.segIndex = last.f.id;
+        info.fkind = last.f.kind;
+        if(anchorCell) info.cellDelta = [
+          last.cell[0]-anchorCell[0], last.cell[1]-anchorCell[1], last.cell[2]-anchorCell[2]];
+      }else info.segIndex = last.i;
+    }
+    if(d.bodyType === "planet") info.radius = d.params.radius;
+    return info;
+  }
+
+  // stage j shows the children of its anchor; the child lying on the
+  // focus path is anchored at the origin (out-of-range focus indices
+  // are appended so they stay visible and anchorable)
+  function stageData(anchors){
+    const data = new Array(5).fill(null);
+    if(anchors[0]){
+      const desc = SE.resolve(anchors[0]);
+      const children = desc.kind === "P"
+        ? SE.neighborhood(anchors[0]).children.map(a => candInfo(a)) : [];
+      data[0] = { desc, addrStr: SE.serializeAddress(anchors[0]), children };
+    }
+    for(let j = 1; j <= 3; j++){
+      if(!anchors[j]) continue;
+      const desc = SE.resolve(anchors[j]);
+      const children = SE.neighborhood(anchors[j]).children.map(a => candInfo(a));
+      let focused = anchors[j-1];
+      if(focused && j === 1 && SE.deepestKind(focused) === "M"){
+        focused = SE.parentAddress(focused);   // moon focus: anchor its planet
+      }
+      let focusedAddrStr = null;
+      if(focused){
+        focusedAddrStr = SE.serializeAddress(focused);
+        if(!children.some(c => c.addrStr === focusedAddrStr)) children.push(candInfo(focused));
+      }
+      data[j] = { desc, addrStr: SE.serializeAddress(anchors[j]), children, focusedAddrStr };
+    }
+    if(anchors[4]){
+      const desc = SE.resolve(anchors[4]);
+      const wseg = anchors[4].segs[anchors[4].segs.length-1];
+      const cell = wseg.cell;
+      const U = 1.25; // cell units -> stage units
+      const focusDet = SE.webFeature(anchors[4].seed, wseg);
+      const anchorPos = focusDet.exists ? focusDet.pos
+        : [cell[0]+0.5, cell[1]+0.5, cell[2]+0.5]; // out-of-enumeration fallback
+      const rel = p => [(p[0]-anchorPos[0])*U, (p[1]-anchorPos[1])*U, (p[2]-anchorPos[2])*U];
+      const focusedAddrStr = SE.serializeAddress(anchors[4]);
+      const children = [];
+      for(const a of [anchors[4], ...SE.neighborhood(anchors[4]).siblings]){
+        const det = SE.webFeature(a.seed, a.segs[a.segs.length-1]);
+        const c = candInfo(a);
+        if(det.exists) c.pos = rel(det.pos);
+        else if(c.addrStr === focusedAddrStr) c.pos = [0,0,0];
+        else continue; // out-of-enumeration siblings have no placement
+        children.push(c);
+      }
+      // dust over a ±2 cell box with spherical feathering: the
+      // observer sits inside the medium; the dark past the dust is
+      // the limit of sight, not an edge
+      const FEATHER = [1.4, 2.7];
+      const raw = SE.sampleWebDust(anchors[4].seed, cell, 2, 600000 * qualityMult, FEATHER);
+      const dustPts = [], dustW = Array.from(raw.w);
+      for(let i = 0; i < raw.pts.length; i += 3){
+        const p = rel([raw.pts[i], raw.pts[i+1], raw.pts[i+2]]);
+        dustPts.push(p[0], p[1], p[2]);
+      }
+      // the far annulus (±4 cells): sparse, dim structure past the
+      // horizon of reach, so the large-scale web reads as continuing
+      // in every direction instead of a thin local shell
+      const far = SE.sampleWebDust(anchors[4].seed, cell, 4,
+        Math.min(600000, 90000 * qualityMult), [3.2, 4.7], 2.55);
+      for(let i = 0; i < far.pts.length; i += 3){
+        const p = rel([far.pts[i], far.pts[i+1], far.pts[i+2]]);
+        dustPts.push(p[0], p[1], p[2]);
+        dustW.push(far.w[i/3] * 0.55);
+      }
+      // far hints (high detail and above): nodes in the outer shell
+      // baked into the dust as slightly brighter specks — structure
+      // continues past reach, without interactive sprites out there
+      if(qualityMult >= 2){
+        const rngF = SE.mulberry32(SE.chain(SE.chainHash(anchors[4]), 0xFA96));
+        const fw = p => {
+          const dx = p[0]-(cell[0]+0.5), dy = p[1]-(cell[1]+0.5), dz = p[2]-(cell[2]+0.5);
+          const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+          return Math.max(0, Math.min(1, 1 - (dist - FEATHER[0]) / (FEATHER[1] - FEATHER[0])));
+        };
+        for(let dx = -2; dx <= 2; dx++)
+          for(let dy = -2; dy <= 2; dy++)
+            for(let dz = -2; dz <= 2; dz++){
+              if(Math.max(Math.abs(dx), Math.abs(dy), Math.abs(dz)) !== 2) continue;
+              const nodes = SE.cellFeatures(anchors[4].seed, [cell[0]+dx, cell[1]+dy, cell[2]+dz]).node;
+              for(const nd of nodes){
+                const f = fw(nd.pos);
+                if(f <= 0.02) continue;
+                for(let k = 0; k < 8; k++){
+                  const p = [nd.pos[0] + (rngF()-0.5)*0.10,
+                             nd.pos[1] + (rngF()-0.5)*0.10,
+                             nd.pos[2] + (rngF()-0.5)*0.10];
+                  const q = rel(p);
+                  dustPts.push(q[0], q[1], q[2]);
+                  dustW.push((0.5 + 0.4*rngF()) * f);
+                }
+              }
+            }
+      }
+      data[4] = { desc, addrStr: focusedAddrStr, children, focusedAddrStr,
+                  dust: { pts: dustPts, w: dustW } };
+    }
+    return data;
+  }
+
+  /* --- focus --- */
+  function focusAddress(addr, opts){
+    opts = opts || {};
+    const str = SE.serializeAddress(addr);
+    if(state.addrStr && str !== state.addrStr && !opts.noHistory){
+      state.prevAddrStr = state.addrStr;
+    }
+    state.addr = addr;          // focus target: the truth of the path
+    state.addrStr = str;
+    state.anchors = SE.zoomPath(addr);
+    state.data = stageData(state.anchors);
+    // the sky seen from inside: derived from the home galaxy and the
+    // neighbouring galaxies of its cluster (display only, no identity)
+    const gEntry = state.data[2];
+    const sysChain = state.data[1] ? state.data[1].desc.chain : SE.chainHash(addr);
+    const neighbors = state.data[3]
+      ? state.data[3].children.filter(c => !gEntry || c.addrStr !== gEntry.addrStr)
+      : [];
+    R.buildSky({
+      chain: sysChain,
+      galaxyChain: gEntry ? gEntry.desc.chain : 0,
+      hasGalaxy: !!gEntry,
+      tint: gEntry ? gEntry.desc.params.color : [0.8, 0.85, 1],
+      neighbors
+    });
+    const z = opts.z !== undefined ? opts.z : STAGE_OF_KIND[SE.deepestKind(addr)];
+    R.buildStages(state.data, z);
+    syncView(true);
+  }
+  function transitionTo(addr, z){
+    veil.classList.add("on");
+    setTimeout(() => {
+      focusAddress(addr, { z });
+      setTimeout(() => veil.classList.remove("on"), 60);
+    }, 290);
+  }
+
+  /* --- view follows the main zoom scale --- */
+  function mainStageFor(z){
+    let best = 0, bd = Infinity;
+    for(let j = 0; j < 5; j++){
+      if(!state.data || !state.data[j]) continue;
+      const d = Math.abs(j - z);
+      if(d < bd){ bd = d; best = j; }
+    }
+    return best;
+  }
+  function syncView(force){
+    const z = R.getZ();
+    zVal.textContent = z.toFixed(2);
+    const m = mainStageFor(z);
+    if(!force && m === state.viewStage) return;
+    state.viewStage = m;
+    const d = state.data[m];
+    state.viewAddrStr = d.addrStr;
+    state.viewDesc = d.desc;
+    updateHud();
+  }
+  R.setZoomHandler(() => syncView(false));
+
+  R.setPickHandler(c => {
+    // tapping something already on the focus path just zooms to it
+    for(let j = 0; j < 5; j++){
+      if(state.data[j] && state.data[j].addrStr === c.addrStr){ R.setZ(j); return; }
+    }
+    const r = SE.parseAddress(c.addrStr);
+    if(!r.ok) return;
+    showToast("→ " + c.code);
+    transitionTo(r.addr, STAGE_OF_KIND[SE.deepestKind(r.addr)]);
+  });
+
+  btnUp.addEventListener("click", () => {
+    for(let j = state.viewStage + 1; j < 5; j++){
+      if(state.data[j]){ R.setZ(j); return; }
+    }
+  });
+
+  function updateHud(){
+    seedVal.textContent = state.addr.seed;
+    scaleVal.textContent = state.viewDesc.kindLabel.toUpperCase();
+    addrText.textContent = state.viewAddrStr;
+    fpText.textContent = state.viewDesc.fingerprint;
+    verifyMsg.textContent = "";
+    btnBack.disabled = !state.prevAddrStr;
+    btnUp.disabled = state.viewStage >= 4 || !state.data.slice(state.viewStage + 1).some(d => d);
+    const marked = state.bookmarks.some(b => b.a === state.viewAddrStr);
+    btnMark.textContent = marked ? "✦" : "✧";
+    btnMark.classList.toggle("active", marked);
+    renderDots();
+  }
+
+  /* --- address line: tap to copy (the address of the scale in view) --- */
+  $("addrLine").addEventListener("click", () => copyText(state.viewAddrStr, "Copied"));
+
+  /* --- verify: cache-independent regeneration check --- */
+  btnVerify.addEventListener("click", () => {
+    const r = SE.parseAddress(state.viewAddrStr);        // roundtrip from string
+    if(!r.ok){ verifyMsg.textContent = "parse failed"; verifyMsg.style.color = "var(--bad)"; return; }
+    const fresh = SE.resolveFresh(r.addr);               // bypass cache entirely
+    const same = fresh.fingerprint === state.viewDesc.fingerprint
+              && SE.serializeAddress(r.addr) === state.viewAddrStr;
+    verifyMsg.textContent = same ? "OK · regenerated " + fresh.fingerprint : "MISMATCH " + fresh.fingerprint;
+    verifyMsg.style.color = same ? "var(--ok)" : "var(--bad)";
+  });
+
+  /* --- jump --- */
+  btnJump.addEventListener("click", () => {
+    closePanels();
+    jumpPanel.classList.add("open");
+    jumpMsg.textContent = "";
+    jumpInput.value = state.viewAddrStr;
+    jumpInput.focus();
+    jumpInput.select();
+  });
+  jumpCancel.addEventListener("click", () => jumpPanel.classList.remove("open"));
+  function doJump(){
+    const r = SE.parseAddress(jumpInput.value);
+    if(!r.ok){ jumpMsg.textContent = r.error; return; }
+    jumpPanel.classList.remove("open");
+    if(SE.serializeAddress(r.addr) === state.addrStr) return;
+    transitionTo(r.addr);
+  }
+  jumpGo.addEventListener("click", doJump);
+  jumpInput.addEventListener("keydown", e => { if(e.key === "Enter") doJump(); });
+
+  /* --- back --- */
+  btnBack.addEventListener("click", () => {
+    if(!state.prevAddrStr) return;
+    const r = SE.parseAddress(state.prevAddrStr);
+    if(!r.ok) return;
+    state.prevAddrStr = null;
+    transitionTo(r.addr);
+  });
+
+  /* --- bookmarks (notebook) --- */
+  let dotsKey = null;
+  function renderDots(){
+    const key = state.bookmarks.map(b => b.a).join("|");
+    if(key === dotsKey) return;   // rebuild only on change, so the
+    dotsKey = key;                // scale-in plays once per new mark
+    nbDots.innerHTML = "";
+    const show = state.bookmarks.slice(-8);
+    for(const b of show){
+      const d = document.createElement("div");
+      d.className = "nbDot";
+      d.style.color = b.colorCss;
+      d.style.background = b.colorCss;
+      nbDots.appendChild(d);
+    }
+    nbCount.textContent = "✧ " + state.bookmarks.length;
+  }
+  function renderList(){
+    nbList.innerHTML = "";
+    nbEmpty.style.display = state.bookmarks.length ? "none" : "block";
+    for(const b of state.bookmarks){
+      const row = document.createElement("div");
+      row.className = "nbRow";
+      const chip = document.createElement("div");
+      chip.className = "nbChip";
+      chip.style.color = b.colorCss;
+      chip.style.background = b.colorCss;
+      const code = document.createElement("span");
+      code.className = "nbCode";
+      code.textContent = b.code;
+      const kind = document.createElement("span");
+      kind.className = "nbKind";
+      kind.textContent = b.kind;
+      const del = document.createElement("button");
+      del.className = "nbDel";
+      del.textContent = "×";
+      del.addEventListener("click", e => {
+        e.stopPropagation();
+        state.bookmarks = state.bookmarks.filter(x => x.a !== b.a);
+        renderList(); renderDots(); updateHud();
+        showToast("Removed");
+      });
+      row.append(chip, code, kind, del);
+      row.addEventListener("click", () => {
+        const r = SE.parseAddress(b.a);
+        if(!r.ok) return;
+        closePanels();
+        for(let j = 0; j < 5; j++){
+          if(state.data && state.data[j] && state.data[j].addrStr === b.a){ R.setZ(j); return; }
+        }
+        transitionTo(r.addr);
+      });
+      nbList.appendChild(row);
+    }
+  }
+  function addBookmark(addrStr, desc){
+    if(state.bookmarks.some(b => b.a === addrStr)) return false;
+    state.bookmarks.push({
+      a: addrStr, fp: desc.fingerprint,
+      code: codeOf(desc.kind, desc.fingerprint),
+      kind: desc.kindLabel, colorCss: descColorCss(desc)
+    });
+    return true;
+  }
+  btnMark.addEventListener("click", () => {
+    const idx = state.bookmarks.findIndex(b => b.a === state.viewAddrStr);
+    if(idx >= 0){
+      state.bookmarks.splice(idx, 1);
+      showToast("Removed");
+    }else{
+      addBookmark(state.viewAddrStr, state.viewDesc);
+      showToast("Marked " + codeOf(state.viewDesc.kind, state.viewDesc.fingerprint));
+    }
+    renderList();
+    updateHud();
+  });
+  nbTrigger.addEventListener("click", () => {
+    const open = nbPanel.classList.contains("open");
+    closePanels();
+    if(!open){ renderList(); nbPanel.classList.add("open"); }
+  });
+  nbClose.addEventListener("click", () => nbPanel.classList.remove("open"));
+  nbCopyAll.addEventListener("click", () => {
+    if(!state.bookmarks.length){ showToast("Notebook is empty"); return; }
+    copyText(state.bookmarks.map(b => b.a).join("\n"), "Copied " + state.bookmarks.length + " addresses");
+  });
+  nbPaste.addEventListener("click", () => {
+    nbPanel.classList.remove("open");
+    pastePanel.classList.add("open");
+    pasteArea.value = "";
+    pasteMsg.textContent = "";
+    pasteArea.focus();
+  });
+  pasteCancel.addEventListener("click", () => {
+    pastePanel.classList.remove("open");
+    nbPanel.classList.add("open");
+    renderList();
+  });
+  pasteImport.addEventListener("click", () => {
+    const lines = pasteArea.value.split("\n").map(s => s.trim()).filter(s => s.length);
+    let added = 0, invalid = 0, dup = 0;
+    for(const line of lines){
+      const r = SE.parseAddress(line);
+      if(!r.ok){ invalid++; continue; }
+      const canon = SE.serializeAddress(r.addr);
+      const desc = SE.resolve(r.addr);
+      if(addBookmark(canon, desc)) added++; else dup++;
+    }
+    if(added === 0 && (invalid || dup)){
+      pasteMsg.textContent = invalid ? invalid + " invalid" : "already in notebook";
+      return;
+    }
+    pastePanel.classList.remove("open");
+    nbPanel.classList.add("open");
+    renderList(); updateHud();
+    let msg = added + " added";
+    if(invalid) msg += " · " + invalid + " invalid";
+    showToast(msg);
+  });
+
+  /* --- detail switching --- */
+  function applyQuality(i, rebuild){
+    qualityIdx = i;
+    qualityMult = QUALITIES[i].mult;
+    btnDetail.textContent = QUALITIES[i].key;
+    btnStill.classList.toggle("active", i === 3);
+    R.setDetail(QUALITIES[i].mult);
+    R.setPixelCap(QUALITIES[i].px);
+    if(rebuild){
+      veilMsg.textContent = "rendering";
+      veil.classList.add("on");
+      setTimeout(() => {
+        focusAddress(state.addr, { noHistory: true, z: R.getZ() });
+        veilMsg.textContent = "";
+        setTimeout(() => veil.classList.remove("on"), 60);
+        // watch the frame time after heavy switches; step back down
+        // before the device suffers
+        if(i >= 2){
+          R.watchPerf(avgMs => {
+            if(avgMs > 90 && qualityIdx === i && qualityIdx > 0){
+              applyQuality(qualityIdx - 1, true);
+              showToast("Detail lowered · performance");
+            }
+          });
+        }
+      }, 290);
+    }
+  }
+  // the DETAIL button cycles the everyday tiers only; from still it
+  // returns to std
+  btnDetail.addEventListener("click", () =>
+    applyQuality(qualityIdx === 3 ? 0 : (qualityIdx + 1) % 3, true));
+
+  /* --- still: a deliberate choice behind its own confirmation --- */
+  btnStill.addEventListener("click", () => {
+    if(qualityIdx === 3){ applyQuality(0, true); return; } // toggle off
+    closePanels();
+    stillPanel.classList.add("open");
+  });
+  stillCancel.addEventListener("click", () => stillPanel.classList.remove("open"));
+  stillGo.addEventListener("click", () => {
+    stillPanel.classList.remove("open");
+    applyQuality(3, true);
+  });
+
+  /* --- capture: one frame, up to 4x resolution, saved as png --- */
+  btnShot.addEventListener("click", () => {
+    closePanels();
+    const url = R.capture();
+    if(!url){ showToast("Capture failed"); return; }
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "space-" + state.viewDesc.fingerprint + ".png";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    showToast("Captured");
+  });
+
+  /* --- safety net: whatever happens, land on std --- */
+  R.setContextHandler(() => {
+    applyQuality(0, true);
+    showToast("Detail reset · graphics recovered");
+  });
+
+  /* --- boot: the whole web first, then down to a world --- */
+  applyQuality(qualityIdx, false);
+  focusAddress(SE.initialAddress(DEFAULT_SEED), { noHistory: true, z: 4 });
+})();
+</script>
+</body>
+</html>
